@@ -58,7 +58,8 @@ if not exist ".env" (
     echo ║  6. USE_OLLAMA=true deb yozing                          ║
     echo ║  7. Ollama yuklab o'rnating: https://ollama.ai          ║
     echo ║  8. Matn uchun:   ollama pull llama3                    ║
-    echo ║     Rasm uchun:   ollama pull llava  (ixtiyoriy)        ║
+    echo ║     Rasm uchun:   ollama pull llava                     ║
+    echo ║     (llava - /kompyuter komandasi uchun ham kerak)      ║
     echo ║                                                          ║
     echo ║  Userbot uchun (ixtiyoriy):                              ║
     echo ║  9. python generate_session.py ni ishga tushiring        ║
