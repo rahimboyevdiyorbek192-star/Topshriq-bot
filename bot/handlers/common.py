@@ -6,75 +6,80 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 
 from ..config import Config
-from .buttons import main_menu_kb
+from .buttons import main_reply_kb
 
 router = Router()
 
-HELP_MANAGER = """<b>🤖 Robot Mutaxassis — Rahbar uchun qo'llanma</b>
+HELP_MANAGER = """\
+<b>🤖 Robot Mutaxassis — Rahbar uchun</b>
 
-<b>📋 Topshiriq berish</b> (Topshiriqlar guruhiga/kanaliga):
-Istalgan xabar yuboring — bot avtomatik topshiriq qiladi.
-Muddat qo'shish: <code>Muddat: 07.08.2026 17:00</code> yozing.
-Namuna (Excel/Word/PPT) biriktiring — xodimlar shu shablonni to'ldiradi.
+<b>📋 Topshiriq berish</b>
+Topshiriqlar guruhiga istalgan xabar yuboring — bot avtomatik qabul qiladi.
+Muddat: <code>Muddat: 10.08.2026 18:00</code>
+Shablon: Excel/Word/PPT faylni biriktiring.
 
-<b>📊 Svodka va hisobotlar:</b>
-/svodka — rasm + matn svodka
-/svodka <code>N</code> — aniq topshiriq svodkasi
-/excel — Excel fayl · /reyting — kim yaxshi ishlayapti
-/topshiriqlar — ro'yxat · /yopish <code>N</code> — yopish
-/eslatma <code>N</code> — qo'lda eslatma
+<b>Pastdagi tugmalar orqali:</b>
+📋 <b>Topshiriqlar</b> — barcha ochiq topshiriqlar
+📊 <b>Svodka</b> — rasm + matn holat hisoboti
+📈 <b>Reyting</b> — xodimlar samaradorligi
+📄 <b>Excel</b> — to'liq hisobot fayli
+🤖 <b>AI Suhbat</b> — AI bilan tahlil va maslahat
+💻 <b>Kompyuter</b> — kompyuter agentini boshqarish
+👥 <b>Xodimlar</b> — ro'yxat, qo'shish, o'chirish
 
-<b>🤖 AI mutaxassis:</b>
-/ai <code>savol</code> — AI bilan suhbat (analitika, maslahat)
-/umumlashtir <code>N</code> — barcha xodim jadvallarini birlashtirib ZIP
+<b>Komandalar:</b>
+/svodka · /excel · /reyting · /eslatma N
+/ai savol · /umumlashtir N · /kompyuter vazifa"""
 
-<b>👥 Xodimlar:</b>
-/hodimlar · /hodim_qoshish · /hodim_ochirish <code>ID</code>
-
-/menu — tugmali menyu · /id — ID · /help — yordam"""
-
-HELP_EMPLOYEE = """<b>🤖 Robot Mutaxassis — Xodim uchun</b>
+HELP_EMPLOYEE = """\
+<b>🤖 Robot Mutaxassis — Xodim uchun</b>
 
 <b>Topshiriqni qanday topshiraman?</b>
 
-1️⃣ <b>Ijro guruhida</b>:
-   • Topshiriq e'loniga <b>reply</b> qilib fayl yuboring
-   • Yoki xabar boshida <code>#T3</code> yozing (3 = topshiriq raqami)
+1️⃣ <b>Ijro guruhida</b> — topshiriq xabariga <b>reply</b> qilib fayl yuboring
+2️⃣ <b>Botga to'g'ridan-to'g'ri</b> — shu botga fayl yuboring, topshiriq so'raladi
+3️⃣ <b>#T3 bilan</b> — xabar boshida raqam yozing: <code>#T3 fayl</code>
 
-2️⃣ <b>Botga to'g'ridan-to'g'ri</b> (shaxsiy chat):
-   • Shu botga fayl yuboring — topshiriq so'raladi
+Fayl turlari: Excel, Word, PPT, PDF, rasm (jadval surati)
 
-3️⃣ <b>Rahbarga yuborgan bo'lsangiz</b>:
-   • Rahbar sizning faylingizni botga forward qiladi
+<b>Pastdagi tugmalar:</b>
+📌 <b>Ishlarim</b> — mening topshiriqlarim holati
+📋 <b>Topshiriqlar</b> — barcha ochiq topshiriqlar
+🤖 <b>AI Yordam</b> — savolga javob
 
-Fayl formatlari: Excel (.xlsx), Word (.docx), PowerPoint (.pptx), PDF, rasm
-
-<b>🤖 AI yordamchi:</b>
-/ai <code>savol</code> — savolga javob (topshiriq, muddat, maslahat)
-
-/mening — mening topshiriqlarim holati
-/ruyxatdan_otish — ro'yxatga qo'shilish
-/menu — tugmali menyu · /id — ID"""
+<b>Komandalar:</b>
+/mening · /ruyxatdan_otish · /ai savol"""
 
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, config: Config) -> None:
     is_mgr = bool(message.from_user and config.is_manager(message.from_user.id))
-    text = HELP_MANAGER if is_mgr else HELP_EMPLOYEE
-    await message.answer(text, reply_markup=main_menu_kb(is_mgr))
+    name   = (message.from_user.first_name or "Xush kelibsiz") if message.from_user else "Xush kelibsiz"
+    role   = "rahbar" if is_mgr else "xodim"
+
+    await message.answer(
+        f"👋 Salom, <b>{name}</b>!\n\n"
+        f"🤖 <b>Robot Mutaxassis</b> — topshiriqlar boshqaruv tizimiga xush kelibsiz.\n"
+        f"Siz <b>{role}</b> sifatida kirgansiz.\n\n"
+        "Quyidagi tugmalardan foydalaning 👇",
+        reply_markup=main_reply_kb(is_mgr),
+    )
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message, config: Config) -> None:
     is_mgr = bool(message.from_user and config.is_manager(message.from_user.id))
-    await message.answer(HELP_MANAGER if is_mgr else HELP_EMPLOYEE, reply_markup=main_menu_kb(is_mgr))
+    await message.answer(
+        HELP_MANAGER if is_mgr else HELP_EMPLOYEE,
+        reply_markup=main_reply_kb(is_mgr),
+    )
 
 
 @router.message(Command("id"))
 async def cmd_id(message: Message) -> None:
-    user = message.from_user
+    user  = message.from_user
     lines = [
-        "<b>ℹ️ Ma'lumot</b>",
+        "<b>ℹ️ ID Ma'lumot</b>",
         f"Chat ID: <code>{message.chat.id}</code>",
         f"Chat turi: {message.chat.title or message.chat.type}",
     ]
