@@ -52,6 +52,7 @@ class Config:
     # Ollama mahalliy AI
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3"
+    ollama_vision_model: str = ""   # Rasm o'qish modeli (masalan llava). Bo'sh = ollama_model
     use_ollama: bool = False
 
     # Userbot (Telethon)
@@ -112,6 +113,7 @@ def load_config() -> Config:
         anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-opus-5").strip() or "claude-opus-5",
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip(),
         ollama_model=os.getenv("OLLAMA_MODEL", "llama3").strip() or "llama3",
+        ollama_vision_model=os.getenv("OLLAMA_VISION_MODEL", "").strip(),
         use_ollama=os.getenv("USE_OLLAMA", "").strip().lower() in ("1", "true", "yes"),
         tg_api_id=_parse_int(os.getenv("TG_API_ID")),
         tg_api_hash=os.getenv("TG_API_HASH", "").strip(),

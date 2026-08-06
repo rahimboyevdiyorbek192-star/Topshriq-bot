@@ -19,6 +19,36 @@ from .normalizer import (
     normalize_cell,
 )
 
+# ── Kirilik → Lotin transliteratsiyasi (ZIP fayl nomlari uchun) ──
+
+_CYR: dict[str, str] = {
+    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo',
+    'ж':'j','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m',
+    'н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u',
+    'ф':'f','х':'x','ц':'ts','ч':'ch','ш':'sh','щ':'sh',
+    'ъ':'','ы':'i','ь':'','э':'e','ю':'yu','я':'ya',
+    'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo',
+    'Ж':'J','З':'Z','И':'I','Й':'Y','К':'K','Л':'L','М':'M',
+    'Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T','У':'U',
+    'Ф':'F','Х':'X','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sh',
+    'Ы':'I','Э':'E','Ю':'Yu','Я':'Ya',
+    "ʻ":"","ʼ":"","'":"","'":"",
+}
+
+
+def _safe_filename(name: str, max_len: int = 25) -> str:
+    """Kirilik harflarni lotinga o'tkazadi, fayl uchun xavfsiz nom qaytaradi."""
+    result = []
+    for c in name:
+        if c in _CYR:
+            result.append(_CYR[c])
+        elif c.isalnum() or c in ' _-':
+            result.append(c)
+        else:
+            result.append('_')
+    clean = ''.join(result).strip().rstrip('_')
+    return clean[:max_len] or 'hodim'
+
 
 # ── Fayldan jadval ma'lumotlarini ajratish ────────────────────
 
@@ -385,16 +415,16 @@ def build_zip(
     task_id: int,
     task_title: str,
 ) -> bytes:
-    safe_title = "".join(c for c in task_title[:30] if c.isalnum() or c in " _-").strip()
+    safe_title = _safe_filename(task_title, max_len=30)
     buf = io.BytesIO()
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for emp_name, file_bytes, file_name in employee_files:
-            safe_emp = "".join(c for c in emp_name[:20] if c.isalnum() or c in " _-").strip()
+            safe_emp = _safe_filename(emp_name, max_len=25)
             ext      = file_name.rsplit(".", 1)[-1] if "." in file_name else "bin"
             zf.writestr(f"xodimlar/{safe_emp}.{ext}", file_bytes)
 
-        unified_name = f"UMUMIY_{safe_title or task_id}.{unified_ext}"
+        unified_name = f"UMUMIY_{safe_title or str(task_id)}.{unified_ext}"
         zf.writestr(unified_name, unified_file)
 
     return buf.getvalue()

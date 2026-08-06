@@ -50,9 +50,10 @@ async def main() -> None:
     ai_client = None
     if config.use_ollama:
         from .ai_ollama import OllamaClient
-        ai_client = OllamaClient(config.ollama_base_url, config.ollama_model)
-        logger.info("Mahalliy AI (Ollama) yoqildi: %s / %s",
-                    config.ollama_base_url, config.ollama_model)
+        vision = config.ollama_vision_model or config.ollama_model
+        ai_client = OllamaClient(config.ollama_base_url, config.ollama_model, vision_model=vision)
+        logger.info("Mahalliy AI (Ollama) yoqildi: %s / %s (vision: %s)",
+                    config.ollama_base_url, config.ollama_model, vision)
     elif config.anthropic_api_key:
         from .ai import AIClient
         ai_client = AIClient(config.anthropic_api_key, config.anthropic_model)

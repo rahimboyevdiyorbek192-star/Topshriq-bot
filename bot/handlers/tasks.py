@@ -1,14 +1,19 @@
-"""Topshiriq yaratish — barcha menejer xabarlari topshiriq sifatida qabul qilinadi."""
+"""Topshiriq yaratish.
+
+Qoidalar:
+  • AI yoqilgan holda: AI har bir menejer xabarini tekshiradi — topshiriqmi yoki oddiy xabarmi.
+  • AI o'chirilgan holda: uzunlik + kalit so'zlar heuristikasi.
+  • Duplicate xabarlar (bir xil chat+msg_id) ikkinchi marta qayta ishlanmaydi.
+"""
 from __future__ import annotations
 
 import re
+import time
+from typing import Any
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
     InputMediaDocument,
     InputMediaPhoto,
     Message,
@@ -21,15 +26,62 @@ from ..utils.files import extract_file, message_text
 
 router = Router()
 
-_TRIGGER = re.compile(r"#\s?topshiriq", re.IGNORECASE)
+_TRIGGER    = re.compile(r"#\s?topshiriq", re.IGNORECASE)
+_SHORT_SKIP = re.compile(
+    r"^\s*(ok|ha|yo[oʻ']q|ko[oʻ']rdim|rahmat|yaxshi|bo[oʻ']ladi|tushundim"
+    r"|salom|assalomu alaykum|xayrli|😊|👍|✅|❌|🙏|👌)\s*$",
+    re.IGNORECASE,
+)
+
+# Duplicate oldini olish uchun kesh: {(chat_id, msg_id): timestamp}
+_processed: dict[tuple[int, int], float] = {}
+_CACHE_TTL = 120  # sekund
 
 
-# ── Yordam funksiyalari ──────────────────────────────────────
+def _cache_check(chat_id: int, msg_id: int) -> bool:
+    """True qaytarsa — allaqachon qayta ishlangan, o'tkazib yuborish kerak."""
+    now = time.monotonic()
+    key = (chat_id, msg_id)
+    # Eski yozuvlarni tozalash
+    dead = [k for k, t in _processed.items() if now - t > _CACHE_TTL]
+    for k in dead:
+        _processed.pop(k, None)
+    if key in _processed:
+        return True
+    _processed[key] = now
+    return False
+
+
+# ── Heuristik (AI bo'lmasa) ─────────────────────────────────
+
+def _heuristic_is_task(text: str, has_files: bool) -> bool:
+    """AI o'chirilgan holda topshiriqni aniqlash."""
+    if has_files:
+        return True  # Fayl biriktirilgan xabar deyarli har doim topshiriq
+    t = text.strip()
+    if len(t) < 15:
+        return False
+    if _SHORT_SKIP.match(t):
+        return False
+    if t.startswith("/"):
+        return False  # Bot komandasi
+    # Topshiriq kalit so'zlari
+    task_keywords = (
+        "kerak", "bajaring", "tayyorla", "yuboring", "to'ldiring", "hisobot",
+        "muddat", "deadline", "topshiriq", "ish", "vazifa", "jadval",
+        "excel", "word", "fayl", "sana", "kun", "hafta",
+    )
+    t_lower = t.lower()
+    if any(kw in t_lower for kw in task_keywords):
+        return True
+    # Uzun xabar — ehtimol topshiriq
+    return len(t) >= 50
+
 
 def _extract_title_and_body(text: str) -> tuple[str, str]:
-    """Trigger va 'Muddat:' qatorini olib tashlab, sarlavha + tavsif qaytaradi."""
+    """#topshiriq trigger va 'Muddat:' qatorini olib tashlab sarlavha+tavsif qaytaradi."""
     cleaned = _TRIGGER.sub("", text, count=1).strip()
-    lines = [ln.rstrip() for ln in cleaned.splitlines()]
+    lines   = [ln.rstrip() for ln in cleaned.splitlines()]
     while lines and not lines[0].strip():
         lines.pop(0)
     title = lines[0].strip() if lines else "Nomsiz topshiriq"
@@ -37,16 +89,14 @@ def _extract_title_and_body(text: str) -> tuple[str, str]:
         ln for ln in lines[1:]
         if not re.match(r"\s*(?:muddat(?:i)?|срок|deadline)\s*[:\-–]", ln, re.IGNORECASE)
     ]
-    body = "\n".join(body_lines).strip()
-    return title[:255], body
+    return title[:255], "\n".join(body_lines).strip()
 
 
 def _auto_extract(text: str) -> tuple[str, str]:
-    """AI bo'lmasa: birinchi qator = sarlavha, qolgani = tavsif."""
+    """AI bo'lmasa: birinchi qator = sarlavha."""
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if not lines:
         return "Topshiriq", ""
-    # Muddat qatorini tavsifdan olib tashlaymiz
     body_lines = [
         ln for ln in lines[1:]
         if not re.match(r"\s*(?:muddat(?:i)?|срок|deadline)\s*[:\-–]", ln, re.IGNORECASE)
@@ -65,13 +115,14 @@ def _is_tasks_source(message: Message, config: Config) -> bool:
 
 
 def _is_manager_post(message: Message, config: Config) -> bool:
-    """Kanal posti yoki guruhda menejer xabari."""
     if message.sender_chat:
-        return True  # Kanal posti (kanallar nomidan yuboriladigan xabarlar)
+        return True  # Kanal posti
     if message.from_user:
         return config.is_manager(message.from_user.id)
     return False
 
+
+# ── Topshiriq yaratish (asosiy mantiq) ───────────────────────
 
 async def _do_create_task(
     message: Message,
@@ -81,23 +132,25 @@ async def _do_create_task(
     bot: Bot,
     title: str,
     body: str,
-    ai=None,
+    ai: Any = None,
 ) -> None:
-    """Topshiriqni DBga yozadi va ijro guruhiga e'lon qiladi."""
-    text = message_text(message)
+    text        = message_text(message)
     deadline_dt = parse_deadline(text, config.tz)
     deadline_iso = deadline_dt.isoformat() if deadline_dt else None
 
-    # AI bilan sarlavha/tavsifni aniqlashtirish
+    # AI bilan sarlavha/tavsif/muddat aniqlashtirish
     if ai and (not title or title == text[:255]):
         try:
-            result = await ai.classify_task(text)
+            result = await ai.classify_message(
+                text,
+                has_files=bool(album or extract_file(message)),
+            )
             if result.get("title"):
                 title = result["title"][:255]
             if result.get("description"):
-                body = result["description"]
+                body  = result["description"]
             if result.get("deadline") and not deadline_dt:
-                deadline_dt = parse_deadline(result["deadline"], config.tz)
+                deadline_dt  = parse_deadline(result["deadline"], config.tz)
                 deadline_iso = deadline_dt.isoformat() if deadline_dt else None
         except Exception:
             pass
@@ -139,11 +192,47 @@ async def _do_create_task(
         await _announce_task(bot, config, db, task_id, title, body, deadline_iso, files)
 
 
-# ── BARCHA MENEJER XABARLARI → TOPSHIRIQ ────────────────────
+# ── AI + heuristik: xabar topshiriqmi? ──────────────────────
+
+async def _should_be_task(
+    text: str, has_files: bool, ai: Any
+) -> tuple[bool, str, str]:
+    """
+    Qaytaradi: (is_task, title, description)
+    """
+    if _TRIGGER.search(text):
+        title, body = _extract_title_and_body(text)
+        return True, title, body
+
+    if ai:
+        try:
+            result = await ai.classify_message(text, has_files=has_files)
+            is_task = bool(result.get("is_task"))
+            conf    = result.get("confidence", 1.0)
+            if not is_task and conf >= 0.7:
+                return False, "", ""
+            if not is_task and conf < 0.7 and not has_files:
+                return False, "", ""
+            if is_task or has_files:
+                title = (result.get("title") or "").strip()
+                desc  = (result.get("description") or "").strip()
+                if not title:
+                    title, desc = _auto_extract(text)
+                return True, title[:255], desc
+        except Exception:
+            pass
+
+    # Heuristik (AI yo'q yoki xato)
+    if not _heuristic_is_task(text, has_files):
+        return False, "", ""
+    title, body = _auto_extract(text)
+    return True, title, body
+
+
+# ── BARCHA MENEJER XABARLARI ─────────────────────────────────
 
 @router.message(
-    (F.chat.type.in_({"group", "supergroup"}))
-    | (F.chat.type == "channel")
+    (F.chat.type.in_({"group", "supergroup"})) | (F.chat.type == "channel")
 )
 async def handle_any_manager_message(
     message: Message,
@@ -151,31 +240,29 @@ async def handle_any_manager_message(
     db: Database,
     config: Config,
     bot: Bot,
-    ai=None,
+    ai: Any = None,
 ) -> None:
-    """Topshiriqlar guruh/kanalida menejer har qanday xabar = topshiriq."""
     if not _is_tasks_source(message, config):
         return
     if not _is_manager_post(message, config):
         return
+    if _cache_check(message.chat.id, message.message_id):
+        return
 
-    text = message_text(message)
-    if not text and not (album or extract_file(message)):
-        return  # Bo'sh xabar
+    text      = message_text(message)
+    has_files = bool(album or extract_file(message))
 
-    # #topshiriq yorlig'i bor bo'lsa: aniq topshiriq
-    if _TRIGGER.search(text):
-        title, body = _extract_title_and_body(text)
-    else:
-        # Avtomatik: birinchi qator sarlavha
-        title, body = _auto_extract(text)
-        if not title:
-            return
+    if not text and not has_files:
+        return
+
+    is_task, title, body = await _should_be_task(text, has_files, ai)
+    if not is_task:
+        return
 
     await _do_create_task(message, album, db, config, bot, title, body, ai=ai)
 
 
-# ── Kanal postlari uchun alohida handler ────────────────────
+# ── Kanal postlari ───────────────────────────────────────────
 
 @router.channel_post()
 async def handle_channel_post(
@@ -184,19 +271,22 @@ async def handle_channel_post(
     db: Database,
     config: Config,
     bot: Bot,
-    ai=None,
+    ai: Any = None,
 ) -> None:
-    """Topshiriqlar kanalida e'lon qilingan har qanday post = topshiriq."""
     if not config.tasks_channel_id or message.chat.id != config.tasks_channel_id:
         return
+    if _cache_check(message.chat.id, message.message_id):
+        return
 
-    text = message_text(message)
-    if _TRIGGER.search(text):
-        title, body = _extract_title_and_body(text)
-    else:
-        title, body = _auto_extract(text)
-        if not title:
-            return
+    text      = message_text(message)
+    has_files = bool(album or extract_file(message))
+
+    if not text and not has_files:
+        return
+
+    is_task, title, body = await _should_be_task(text, has_files, ai)
+    if not is_task:
+        return
 
     await _do_create_task(message, album, db, config, bot, title, body, ai=ai)
 
@@ -225,7 +315,7 @@ async def _announce_task(
         f"(yoki xabar boshida <code>#T{task_id}</code> deb yozing)."
     )
 
-    announce_msg: Message | None = None
+    announce_msg = None
     if len(files) == 1 and files[0][2] == "document":
         announce_msg = await bot.send_document(
             config.execution_group_id, files[0][0], caption=caption
@@ -241,7 +331,7 @@ async def _announce_task(
                 media.append(InputMediaDocument(media=fid, caption=cap))
             first = False
         try:
-            sent = await bot.send_media_group(config.execution_group_id, media)
+            sent         = await bot.send_media_group(config.execution_group_id, media)
             announce_msg = sent[0] if sent else None
         except Exception:
             announce_msg = await bot.send_message(config.execution_group_id, caption)
@@ -252,10 +342,12 @@ async def _announce_task(
         await db.set_announce_msg(task_id, announce_msg.message_id)
 
 
-# ── /topshiriqlar va /yopish komandalar ─────────────────────
+# ── /topshiriqlar va /yopish ─────────────────────────────────
 
 @router.message(Command("topshiriqlar", "tasks"))
-async def cmd_list_tasks(message: Message, db: Database, config: Config) -> None:
+async def cmd_list_tasks(
+    message: Message, db: Database, config: Config
+) -> None:
     tasks = await db.list_open_tasks()
     if not tasks:
         await message.reply("📭 Ochiq topshiriqlar yo'q.")
@@ -271,7 +363,7 @@ async def cmd_list_tasks(message: Message, db: Database, config: Config) -> None
             f"   ✅ {done}/{total_emp} · {format_deadline(t['deadline'], config.tz)}"
             + (f" · {left}" if left else "")
         )
-    lines.append("\nBatafsil svodka: /svodka <code>N</code>")
+    lines.append("\nBatafsil: /svodka <code>N</code>")
     await message.reply("\n".join(lines))
 
 
@@ -286,7 +378,7 @@ async def cmd_close_task(
         await message.reply("ℹ️ Foydalanish: <code>/yopish N</code>")
         return
     task_id = int(command.args.strip())
-    task = await db.get_task(task_id)
+    task    = await db.get_task(task_id)
     if not task:
         await message.reply("⚠️ Bunday topshiriq topilmadi.")
         return

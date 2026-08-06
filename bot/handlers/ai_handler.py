@@ -1,17 +1,20 @@
-"""AI mutaxassis: suhbat, hisobot umumlashtirish (ZIP), va analitika."""
+"""AI mutaxassis: suhbat, jadval umumlashtirish (ZIP), analitika.
+
+Arxitektura:
+  • /ai savol          — Bosh AI bilan muloqot (to'liq kontekst)
+  • /umumlashtir N     — Barcha fayllarni o'qiydi (Excel+Word+PPT+RASM), umumlashtiradi
+  • cb_consolidate:N   — Inline tugma orqali umumlashtirish
+"""
 from __future__ import annotations
 
 import io
 import logging
 from datetime import datetime
+from typing import Any
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import (
-    BufferedInputFile,
-    CallbackQuery,
-    Message,
-)
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from ..config import Config
 from ..database import Database
@@ -28,37 +31,34 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-def _ai_client(ai):
-    return ai  # None yoki AIClient/OllamaClient
-
-
-# ── Kontekst ma'lumoti ────────────────────────────────────────
+# ── Kontekst: ochiq topshiriqlar + reyting ────────────────────
 
 async def _build_context(db: Database, config: Config, user_id: int) -> str:
     parts = []
 
-    # Ochiq topshiriqlar
     tasks = await db.list_open_tasks()
     emp_cnt = await db.count_employees()
     if tasks:
         lines = []
         for t in tasks:
-            sub = await db.submitted_employee_ids(t["id"])
+            sub  = await db.submitted_employee_ids(t["id"])
             lines.append(f"#{t['id']} {t['title']} — {len(sub)}/{emp_cnt} bajardi")
         parts.append("Ochiq topshiriqlar:\n" + "\n".join(lines))
 
-    # Reyting
     ranking = await db.employee_ranking()
     if ranking:
-        top = ranking[:5]
+        top    = ranking[:5]
         bottom = ranking[-3:] if len(ranking) > 5 else []
-        top_str    = ", ".join(f"{r['full_name']}({r['done_count']})" for r in top)
-        bottom_str = ", ".join(f"{r['full_name']}({r['done_count']})" for r in bottom)
-        parts.append(f"Top 5 faol: {top_str}")
-        if bottom_str:
-            parts.append(f"Eng oz bajarganlar: {bottom_str}")
+        parts.append(
+            "Top 5 faol: " +
+            ", ".join(f"{r['full_name']}({r['done_count']})" for r in top)
+        )
+        if bottom:
+            parts.append(
+                "Eng oz bajarganlar: " +
+                ", ".join(f"{r['full_name']}({r['done_count']})" for r in bottom)
+            )
 
-    # Foydalanuvchi
     if config.is_manager(user_id):
         parts.append("Foydalanuvchi roli: Rahbar")
     else:
@@ -69,45 +69,45 @@ async def _build_context(db: Database, config: Config, user_id: int) -> str:
     return "\n\n".join(parts)
 
 
-# ── /ai — erkin suhbat ────────────────────────────────────────
+# ── /ai — bosh AI bilan erkin muloqot ────────────────────────
 
 @router.message(Command("ai"))
 async def cmd_ai_chat(
-    message: Message, command: CommandObject, config: Config, db: Database,
-    ai=None,
+    message: Message, command: CommandObject,
+    config: Config, db: Database, ai: Any = None,
 ) -> None:
-    client = _ai_client(ai)
-    if not client:
+    if not ai:
         await message.reply(
             "🤖 AI o'chirilgan.\n"
             "Yoqish uchun:\n"
             "• Bepul: <code>USE_OLLAMA=true</code> + Ollama o'rnating\n"
-            "• Pullik: <code>ANTHROPIC_API_KEY</code> ni to'ldiring"
+            "  <code>ollama pull llama3</code>\n"
+            "• Pullik: <code>ANTHROPIC_API_KEY</code> to'ldiring"
         )
         return
     question = (command.args or "").strip()
     if not question:
         await message.reply(
             "ℹ️ Foydalanish: <code>/ai savol matni</code>\n\n"
-            "Masalan: <code>/ai Qaysi hodim topshiriqlarni bajarmayapti?</code>"
+            "Misol: <code>/ai Qaysi xodim topshiriqlarni bajarmayapti?</code>"
         )
         return
 
-    wait  = await message.reply("🤖 O'ylamoqda...")
-    extra = await _build_context(db, config, message.from_user.id if message.from_user else 0)
-    answer = await client.chat([{"role": "user", "content": question}], extra_context=extra)
+    wait    = await message.reply("🤖 O'ylayapman...")
+    ctx     = await _build_context(db, config, message.from_user.id if message.from_user else 0)
+    answer  = await ai.chat([{"role": "user", "content": question}], extra_context=ctx)
     try:
         await wait.edit_text(f"🤖 {answer}")
     except Exception:
         await message.reply(f"🤖 {answer}")
 
 
-# ── /umumlashtir — jadvallarni birlashtirib ZIP ───────────────
+# ── /umumlashtir N — jadvallarni birlashtirib ZIP ─────────────
 
 @router.message(Command("umumlashtir", "consolidate"))
 async def cmd_consolidate(
-    message: Message, command: CommandObject, config: Config, db: Database,
-    bot: Bot, ai=None,
+    message: Message, command: CommandObject,
+    config: Config, db: Database, bot: Bot, ai: Any = None,
 ) -> None:
     if not (message.from_user and config.is_manager(message.from_user.id)):
         await message.reply("⛔️ Bu komanda faqat rahbar uchun.")
@@ -115,7 +115,8 @@ async def cmd_consolidate(
     if not (command.args and command.args.strip().isdigit()):
         await message.reply(
             "ℹ️ Foydalanish: <code>/umumlashtir N</code>\n"
-            "N — topshiriq raqami. Xodimlar yuborgan Excel/Word/PPT fayllarni umumlashtiradi."
+            "N — topshiriq raqami.\n"
+            "Excel, Word, PPT va rasm fayllarni o'qib, bitta fayl + ZIP yasaydi."
         )
         return
     task_id = int(command.args.strip())
@@ -124,7 +125,7 @@ async def cmd_consolidate(
 
 @router.callback_query(F.data.startswith("consolidate:"))
 async def cb_consolidate(
-    callback: CallbackQuery, db: Database, config: Config, bot: Bot, ai=None,
+    callback: CallbackQuery, db: Database, config: Config, bot: Bot, ai: Any = None,
 ) -> None:
     if not config.is_manager(callback.from_user.id):
         await callback.answer("⛔️ Faqat rahbar uchun.", show_alert=True)
@@ -134,9 +135,15 @@ async def cb_consolidate(
     await _do_consolidate(callback.message, bot, db, config, task_id, ai=ai)
 
 
+# ── Asosiy umumlashtirish mantiqi ────────────────────────────
+
 async def _do_consolidate(
-    reply_to: Message, bot: Bot, db: Database, config: Config,
-    task_id: int, ai=None,
+    reply_to: Message,
+    bot: Bot,
+    db: Database,
+    config: Config,
+    task_id: int,
+    ai: Any = None,
 ) -> None:
     task = await db.get_task(task_id)
     if not task:
@@ -151,15 +158,15 @@ async def _do_consolidate(
         return
 
     wait = await reply_to.reply(
-        f"📊 #{task_id}: {task['title']}\n"
-        f"🔄 {len(submissions)} ta fayl yuklanmoqda va umumlashtirilmoqda..."
+        f"📊 <b>#{task_id}: {task['title']}</b>\n"
+        f"🔄 {len(submissions)} ta fayl o'qilmoqda va umumlashtirilmoqda..."
     )
 
-    # Topshiriq shablonini olish va formatini aniqlash
+    # ── Topshiriq shabloni va formati ────────────────────────
     task_files      = await db.get_task_files(task_id)
     task_file_names = [tf["file_name"] for tf in task_files if tf["file_name"]]
     template_format = detect_template_format(task_file_names)
-    ref_headers     = None
+    ref_headers: list[str] | None = None
 
     for tf in task_files:
         if tf["file_name"] and tf["file_name"].lower().endswith((".xlsx", ".xls")):
@@ -174,49 +181,75 @@ async def _do_consolidate(
             except Exception:
                 pass
 
-    # Har bir xodim faylini yuklab olish
+    # ── Xodim fayllarini yuklab olish va o'qish ──────────────
     employee_files: list[tuple[str, bytes, str]] = []
     text_reports:   list[tuple[str, str]]        = []
+    photo_count     = 0
+    error_count     = 0
 
     for sub in submissions:
         emp      = await db.get_employee(sub["employee_id"])
         emp_name = emp["full_name"] if emp else f"ID:{sub['employee_id']}"
 
-        if not sub["file_id"] or not sub["file_name"]:
+        if not sub["file_id"]:
             if sub["note"]:
                 text_reports.append((emp_name, sub["note"]))
             continue
 
         try:
-            tg_f = await bot.get_file(sub["file_id"])
-            buf  = io.BytesIO()
+            tg_f       = await bot.get_file(sub["file_id"])
+            buf        = io.BytesIO()
             await bot.download_file(tg_f.file_path, buf)
             file_bytes = buf.getvalue()
-            fname      = sub["file_name"]
-            employee_files.append((emp_name, file_bytes, fname))
-            text_reports.append((emp_name, extract_text(file_bytes, fname)))
-        except Exception as exc:
-            logger.warning("Fayl yuklashda xato (%s): %s", sub["id"], exc)
+            fname      = sub["file_name"] or ""
 
-    if not employee_files and not text_reports:
-        await _edit_or_reply(wait, reply_to, "⚠️ Yuklanadigan fayl topilmadi.")
-        return
+            # Rasm (photo) bo'lsa — AI vision bilan o'qish
+            if not fname or fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                photo_count += 1
+                if ai and hasattr(ai, "read_image"):
+                    img_text = await ai.read_image(
+                        file_bytes,
+                        hint=f"Bu '{task['title']}' topshirig'i bo'yicha xodim yuborgan rasm. "
+                             "Rasmdagi jadval, raqam va barcha ma'lumotlarni o'qi.",
+                    )
+                    if img_text:
+                        text_reports.append((emp_name, img_text))
+                        # Rasmni ham fayl sifatida qo'shamiz (ZIP uchun)
+                        safe_fname = fname or f"{emp_name}.jpg"
+                        employee_files.append((emp_name, file_bytes, safe_fname))
+                else:
+                    # AI yo'q — faqat ZIP ga qo'shamiz
+                    employee_files.append((emp_name, file_bytes, fname or f"{emp_name}.jpg"))
+            else:
+                # Excel/Word/PPT fayl
+                employee_files.append((emp_name, file_bytes, fname))
+                text_reports.append((emp_name, extract_text(file_bytes, fname)))
+
+        except Exception as exc:
+            logger.warning("Fayl yuklashda xato (%s/%s): %s", emp_name, sub["id"], exc)
+            error_count += 1
 
     # ── Jadvallarni umumlashtirish ────────────────────────────
-    canonical_headers: list[str] = []
-    unified_rows_count = 0
-    unified_file  = b""
-    unified_ext   = "xlsx"
-    zip_bytes     = b""
+    # Faqat fayl bo'lgan (rasm emas) xodimlarni struktura birlashtirish uchun ajratamiz
+    struct_files = [
+        (n, b, fn) for n, b, fn in employee_files
+        if fn.lower().endswith((".xlsx", ".xls", ".docx", ".doc", ".pptx", ".ppt"))
+    ]
 
-    if employee_files:
+    unified_file = b""
+    unified_ext  = template_format or "xlsx"
+
+    if struct_files:
         unified_file, unified_ext = auto_consolidate(
-            reports=employee_files,
+            reports=struct_files,
             template_format=template_format,
             reference_headers=ref_headers,
             task_title=task["title"],
             tz=config.tz,
         )
+
+    zip_bytes = b""
+    if employee_files:
         zip_bytes = build_zip(
             employee_files=employee_files,
             unified_file=unified_file,
@@ -225,14 +258,9 @@ async def _do_consolidate(
             task_title=task["title"],
         )
 
-    # ── AI bilan xulosa ───────────────────────────────────────
-    fmt_label = {"xlsx": "Excel", "docx": "Word", "pptx": "PowerPoint"}.get(unified_ext, unified_ext.upper())
-    summary_text = (
-        f"📊 <b>UMUMLASHTIRISH #{task_id}: {task['title']}</b>\n\n"
-        f"📁 Qayta ishlangan fayllar: {len(employee_files)} ta\n"
-        f"📝 Matn hisobotlar: {len(text_reports)} ta\n"
-        f"📄 Chiqish formati: {fmt_label}\n"
-    )
+    # ── AI tahlili ────────────────────────────────────────────
+    ai_summary    = ""
+    ai_table_analysis = {}
 
     if ai and text_reports:
         try:
@@ -243,34 +271,76 @@ async def _do_consolidate(
             )
             if result:
                 if result.get("summary"):
-                    summary_text += f"\n🤖 <b>AI xulosasi:</b>\n{result['summary']}\n"
-                kp = result.get("key_points", [])
-                if kp:
-                    summary_text += "\n🔑 <b>Asosiy natijalar:</b>\n"
-                    for point in kp:
-                        summary_text += f"  • {point}\n"
+                    ai_summary = result["summary"]
         except Exception as exc:
             logger.warning("AI consolidate xatolik: %s", exc)
 
-    await _edit_or_reply(wait, reply_to, summary_text)
+    # AI jadval tahlili (agar struktura fayli birlashtirilib, AI mavjud bo'lsa)
+    if ai and struct_files and hasattr(ai, "analyze_table") and unified_file:
+        try:
+            from ..utils.consolidator import consolidate as _consolidate
+            canonical_h, unified_rows = _consolidate(struct_files, reference_headers=ref_headers)
+            ai_table_analysis = await ai.analyze_table(
+                headers=canonical_h,
+                rows=unified_rows,
+                task_context=f"{task['title']}: {task.get('description', '') or ''}",
+            )
+        except Exception as exc:
+            logger.warning("AI analyze_table xatolik: %s", exc)
 
-    # Umumiy fayl yuborish (format saqlanadi: Excel/Word/PPT)
+    # ── Xulosa xabari ─────────────────────────────────────────
+    fmt_label = {"xlsx": "Excel", "docx": "Word", "pptx": "PowerPoint"}.get(
+        unified_ext, unified_ext.upper()
+    )
+    summary = (
+        f"📊 <b>UMUMLASHTIRISH #{task_id}: {task['title']}</b>\n\n"
+        f"📁 Fayllar qayta ishlandi: {len(employee_files)} ta\n"
+    )
+    if photo_count:
+        summary += f"📸 Rasmlar (AI o'qidi): {photo_count} ta\n"
+    if error_count:
+        summary += f"⚠️ Yuklab bo'lmadi: {error_count} ta\n"
+    if struct_files:
+        summary += f"📄 Chiqish formati: {fmt_label}\n"
+
+    if ai_summary:
+        summary += f"\n🤖 <b>AI xulosasi:</b>\n{ai_summary}\n"
+
+    if ai_table_analysis:
+        if ai_table_analysis.get("top_performers"):
+            top = ", ".join(ai_table_analysis["top_performers"][:3])
+            summary += f"\n🏆 Eng yaxshi: {top}"
+        if ai_table_analysis.get("low_performers"):
+            low = ", ".join(ai_table_analysis["low_performers"][:3])
+            summary += f"\n⚠️ Kam ishlagan: {low}"
+        if ai_table_analysis.get("recommendation"):
+            summary += f"\n\n💡 <b>Tavsiya:</b> {ai_table_analysis['recommendation']}"
+        if ai_table_analysis.get("anomalies"):
+            anom = ai_table_analysis["anomalies"][:2]
+            summary += "\n\n🔍 <b>Diqqat:</b>\n" + "\n".join(f"• {a}" for a in anom)
+
+    await _edit_or_reply(wait, reply_to, summary)
+
+    # Umumiy fayl yuborish
     if unified_file:
         ts    = datetime.now(config.tz).strftime("%Y%m%d_%H%M")
         fname = f"UMUMIY_{task_id}_{ts}.{unified_ext}"
         await bot.send_document(
             reply_to.chat.id,
             BufferedInputFile(unified_file, filename=fname),
-            caption=f"📄 #{task_id} umumlashtirilgan jadval ({fmt_label})",
+            caption=f"📄 #{task_id} umumlashtirilgan jadval ({fmt_label}, {len(struct_files)} xodim)",
         )
 
-    # ZIP arxiv (barcha xodim fayllar + umumiy)
+    # ZIP arxiv
     if zip_bytes:
         zname = f"Topshiriq_{task_id}.zip"
         await bot.send_document(
             reply_to.chat.id,
             BufferedInputFile(zip_bytes, filename=zname),
-            caption=f"📦 #{task_id} — barcha fayllar ZIP ({len(employee_files)} xodim + umumiy {fmt_label})",
+            caption=(
+                f"📦 #{task_id} — barcha fayllar ZIP\n"
+                f"({len(employee_files)} xodim fayl + umumiy {fmt_label})"
+            ),
         )
 
 
@@ -278,4 +348,7 @@ async def _edit_or_reply(wait: Message, fallback: Message, text: str) -> None:
     try:
         await wait.edit_text(text)
     except Exception:
-        await fallback.reply(text)
+        try:
+            await fallback.reply(text)
+        except Exception:
+            pass

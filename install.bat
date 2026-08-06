@@ -55,9 +55,10 @@ if not exist ".env" (
     echo ║  5. EXECUTION_GROUP_ID — ijro guruhi ID'si               ║
     echo ║                                                          ║
     echo ║  AI uchun (BEPUL variant tavsiya etiladi):               ║
-    echo ║  6. USE_OLLAMA=true deb yozing                           ║
-    echo ║  7. Ollama yuklab o'rnating: https://ollama.ai           ║
-    echo ║  8. Buyruq: ollama pull llama3                           ║
+    echo ║  6. USE_OLLAMA=true deb yozing                          ║
+    echo ║  7. Ollama yuklab o'rnating: https://ollama.ai          ║
+    echo ║  8. Matn uchun:   ollama pull llama3                    ║
+    echo ║     Rasm uchun:   ollama pull llava  (ixtiyoriy)        ║
     echo ║                                                          ║
     echo ║  Userbot uchun (ixtiyoriy):                              ║
     echo ║  9. python generate_session.py ni ishga tushiring        ║
