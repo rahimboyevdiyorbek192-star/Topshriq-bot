@@ -16,10 +16,11 @@ from aiogram.types import (
 from ..config import Config
 from ..database import Database
 from ..utils.consolidator import (
-    build_unified_excel,
+    auto_consolidate,
     build_zip,
-    consolidate,
+    detect_template_format,
     extract_table_from_file,
+    extract_table_from_xlsx,
 )
 from ..utils.extract import extract_text
 
@@ -154,16 +155,18 @@ async def _do_consolidate(
         f"🔄 {len(submissions)} ta fayl yuklanmoqda va umumlashtirilmoqda..."
     )
 
-    # Topshiriq shablonini olish (agar Excel bo'lsa)
-    task_files    = await db.get_task_files(task_id)
-    ref_headers   = None
+    # Topshiriq shablonini olish va formatini aniqlash
+    task_files      = await db.get_task_files(task_id)
+    task_file_names = [tf["file_name"] for tf in task_files if tf["file_name"]]
+    template_format = detect_template_format(task_file_names)
+    ref_headers     = None
+
     for tf in task_files:
-        if tf["file_name"] and tf["file_name"].lower().endswith(".xlsx"):
+        if tf["file_name"] and tf["file_name"].lower().endswith((".xlsx", ".xls")):
             try:
                 tg_f = await bot.get_file(tf["file_id"])
                 buf  = io.BytesIO()
                 await bot.download_file(tg_f.file_path, buf)
-                from ..utils.consolidator import extract_table_from_xlsx
                 hdrs, _ = extract_table_from_xlsx(buf.getvalue())
                 if hdrs:
                     ref_headers = hdrs
@@ -201,28 +204,35 @@ async def _do_consolidate(
 
     # ── Jadvallarni umumlashtirish ────────────────────────────
     canonical_headers: list[str] = []
-    unified_rows: list[dict[str, str]] = []
+    unified_rows_count = 0
+    unified_file  = b""
+    unified_ext   = "xlsx"
+    zip_bytes     = b""
 
     if employee_files:
-        canonical_headers, unified_rows = consolidate(employee_files, reference_headers=ref_headers)
-        unified_excel = build_unified_excel(
-            canonical_headers, unified_rows,
-            task_title=task["title"], tz=config.tz,
+        unified_file, unified_ext = auto_consolidate(
+            reports=employee_files,
+            template_format=template_format,
+            reference_headers=ref_headers,
+            task_title=task["title"],
+            tz=config.tz,
         )
-        zip_bytes = build_zip(employee_files, unified_excel, task_id, task["title"])
-    else:
-        unified_excel = b""
-        zip_bytes     = b""
+        zip_bytes = build_zip(
+            employee_files=employee_files,
+            unified_file=unified_file,
+            unified_ext=unified_ext,
+            task_id=task_id,
+            task_title=task["title"],
+        )
 
     # ── AI bilan xulosa ───────────────────────────────────────
+    fmt_label = {"xlsx": "Excel", "docx": "Word", "pptx": "PowerPoint"}.get(unified_ext, unified_ext.upper())
     summary_text = (
         f"📊 <b>UMUMLASHTIRISH #{task_id}: {task['title']}</b>\n\n"
         f"📁 Qayta ishlangan fayllar: {len(employee_files)} ta\n"
         f"📝 Matn hisobotlar: {len(text_reports)} ta\n"
+        f"📄 Chiqish formati: {fmt_label}\n"
     )
-    if canonical_headers:
-        summary_text += f"🗂 Ustunlar: {', '.join(canonical_headers[:6])}\n"
-        summary_text += f"📊 Qatorlar: {len(unified_rows)} ta\n"
 
     if ai and text_reports:
         try:
@@ -244,13 +254,14 @@ async def _do_consolidate(
 
     await _edit_or_reply(wait, reply_to, summary_text)
 
-    # Umumiy Excel yuborish
-    if unified_excel:
-        fname = f"UMUMIY_{task_id}_{datetime.now(config.tz).strftime('%Y%m%d_%H%M')}.xlsx"
+    # Umumiy fayl yuborish (format saqlanadi: Excel/Word/PPT)
+    if unified_file:
+        ts    = datetime.now(config.tz).strftime("%Y%m%d_%H%M")
+        fname = f"UMUMIY_{task_id}_{ts}.{unified_ext}"
         await bot.send_document(
             reply_to.chat.id,
-            BufferedInputFile(unified_excel, filename=fname),
-            caption=f"📄 #{task_id} umumlashtirilgan jadval ({len(unified_rows)} qator)",
+            BufferedInputFile(unified_file, filename=fname),
+            caption=f"📄 #{task_id} umumlashtirilgan jadval ({fmt_label})",
         )
 
     # ZIP arxiv (barcha xodim fayllar + umumiy)
@@ -259,7 +270,7 @@ async def _do_consolidate(
         await bot.send_document(
             reply_to.chat.id,
             BufferedInputFile(zip_bytes, filename=zname),
-            caption=f"📦 #{task_id} — barcha fayllar ZIP ({len(employee_files)} xodim + umumiy)",
+            caption=f"📦 #{task_id} — barcha fayllar ZIP ({len(employee_files)} xodim + umumiy {fmt_label})",
         )
 
 
