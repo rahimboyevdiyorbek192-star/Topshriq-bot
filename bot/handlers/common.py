@@ -6,6 +6,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 
 from ..config import Config
+from .buttons import main_menu_kb
 
 router = Router()
 
@@ -17,24 +18,21 @@ Xabarni <code>#topshiriq</code> bilan boshlang. Namuna:
 Oylik hisobot tayyorlash
 Muddat: 07.08.2026 17:00
 Har bir bo'lim bo'yicha hisobot kerak</code>
-Word/Excel/PowerPoint namunalarini shu xabarga biriktiring (albom bo'lsa ham bo'ladi).
+Word/Excel/PowerPoint namunalarini shu xabarga biriktiring.
 
 <b>Svodka va hisobotlar:</b>
-/svodka — barcha ochiq topshiriqlar bo'yicha umumiy holat
-/svodka <code>N</code> — N-topshiriq bo'yicha kim bajardi/bajarmadi
-/excel — svodkani Excel fayl ko'rinishida yuklab olish
-/topshiriqlar — ochiq topshiriqlar ro'yxati
-/yopish <code>N</code> — N-topshiriqni yopish
-/eslatma <code>N</code> — bajarmaganlarga eslatma yuborish
+/svodka — umumiy holat · /svodka <code>N</code> — aniq topshiriq
+/excel — Excel fayl · /topshiriqlar — ro'yxat
+/yopish <code>N</code> — yopish · /eslatma <code>N</code> — eslatma
+
+<b>AI mutaxassis:</b>
+/ai <code>savol</code> — sun'iy intellekt bilan suhbat
+/umumlashtir <code>N</code> — hisobotlarni umumlashtirish
 
 <b>Xodimlar:</b>
-/hodimlar — xodimlar ro'yxati
-/hodim_qoshish — (xodim xabariga reply qilib) qo'shish
-/hodim_ochirish <code>ID</code> — ro'yxatdan chiqarish
+/hodimlar · /hodim_qoshish · /hodim_ochirish <code>ID</code>
 
-<b>Boshqa:</b>
-/id — chat va foydalanuvchi ID'sini ko'rsatadi
-/help — shu qo'llanma"""
+/menu — tugmali menyu · /id — ID · /help — yordam"""
 
 HELP_EMPLOYEE = """<b>🤖 Topshiriqlar boti — Xodim uchun</b>
 
@@ -45,22 +43,25 @@ Topshiriqni bajarganingizda <b>Ijro guruhiga</b> tashlang:
 Ishingizni (fayl, rasm yoki matn) shu tarzda yuborsangiz,
 bot avtomatik qabul qiladi va rahbarga hisobga oladi.
 
+<b>AI mutaxassis:</b>
+/ai <code>savol</code> — sun'iy intellekt bilan suhbat
+
 /mening — o'z topshiriqlarim holati
-/ruyxatdan_otish — o'zingizni xodimlar ro'yxatiga qo'shish
-/id — ID'ni ko'rsatadi"""
+/ruyxatdan_otish — xodimlar ro'yxatiga qo'shilish
+/menu — tugmali menyu · /id — ID"""
 
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, config: Config) -> None:
-    is_mgr = message.from_user and config.is_manager(message.from_user.id)
+    is_mgr = bool(message.from_user and config.is_manager(message.from_user.id))
     text = HELP_MANAGER if is_mgr else HELP_EMPLOYEE
-    await message.answer(text)
+    await message.answer(text, reply_markup=main_menu_kb(is_mgr))
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message, config: Config) -> None:
-    is_mgr = message.from_user and config.is_manager(message.from_user.id)
-    await message.answer(HELP_MANAGER if is_mgr else HELP_EMPLOYEE)
+    is_mgr = bool(message.from_user and config.is_manager(message.from_user.id))
+    await message.answer(HELP_MANAGER if is_mgr else HELP_EMPLOYEE, reply_markup=main_menu_kb(is_mgr))
 
 
 @router.message(Command("id"))

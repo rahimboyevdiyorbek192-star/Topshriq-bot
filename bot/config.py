@@ -43,6 +43,12 @@ class Config:
     timezone_name: str
     db_path: str
     reminder_minutes: list[int] = field(default_factory=list)
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-opus-5"
+
+    @property
+    def ai_enabled(self) -> bool:
+        return bool(self.anthropic_api_key)
 
     @property
     def tz(self) -> ZoneInfo:
@@ -74,4 +80,7 @@ def load_config() -> Config:
         timezone_name=os.getenv("TIMEZONE", "Asia/Tashkent"),
         db_path=os.getenv("DB_PATH", "topshriq.db"),
         reminder_minutes=reminders,
+        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", "").strip(),
+        anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-opus-5").strip()
+        or "claude-opus-5",
     )

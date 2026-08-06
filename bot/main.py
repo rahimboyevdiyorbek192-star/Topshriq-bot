@@ -9,6 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand
 
+from .ai import AIClient
 from .config import load_config
 from .database import Database
 from .handlers import setup_routers
@@ -23,12 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 COMMANDS = [
+    BotCommand(command="menu", description="Asosiy menyu (tugmalar)"),
     BotCommand(command="svodka", description="Umumiy svodka / N-topshiriq svodkasi"),
     BotCommand(command="excel", description="Svodkani Excel faylda yuklab olish"),
     BotCommand(command="topshiriqlar", description="Ochiq topshiriqlar ro'yxati"),
     BotCommand(command="eslatma", description="Bajarmaganlarga eslatma yuborish"),
     BotCommand(command="hodimlar", description="Xodimlar ro'yxati"),
     BotCommand(command="mening", description="Mening topshiriqlarim holati"),
+    BotCommand(command="ai", description="AI mutaxassis bilan suhbat"),
+    BotCommand(command="umumlashtir", description="Hisobotlarni AI bilan umumlashtirish"),
     BotCommand(command="id", description="Chat va foydalanuvchi ID"),
     BotCommand(command="help", description="Yordam / qo'llanma"),
 ]
@@ -41,17 +45,21 @@ async def main() -> None:
     await db.connect()
     logger.info("Ma'lumotlar bazasi ulandi: %s", config.db_path)
 
+    ai_client: AIClient | None = None
+    if config.ai_enabled:
+        ai_client = AIClient(config.anthropic_api_key, config.anthropic_model)
+        logger.info("AI yoqilgan (model: %s)", config.anthropic_model)
+
     bot = Bot(
         token=config.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
 
-    # Middleware'lar
-    deps = DependencyMiddleware(config, db)
+    deps = DependencyMiddleware(config, db, ai=ai_client)
     album = AlbumMiddleware()
-    # Outer middleware — filtrlardan oldin ishlaydi (albom qismlarini yig'ish uchun zarur).
     dp.message.outer_middleware(deps)
+    dp.callback_query.outer_middleware(deps)
     dp.message.outer_middleware(album)
 
     dp.include_router(setup_routers())

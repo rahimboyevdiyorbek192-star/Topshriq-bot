@@ -12,11 +12,12 @@ from .database import Database
 
 
 class DependencyMiddleware(BaseMiddleware):
-    """Har bir handlerga config va db obyektlarini uzatadi."""
+    """Har bir handlerga config, db va ai obyektlarini uzatadi."""
 
-    def __init__(self, config: Config, db: Database) -> None:
+    def __init__(self, config: Config, db: Database, ai=None) -> None:
         self.config = config
         self.db = db
+        self.ai = ai
 
     async def __call__(
         self,
@@ -26,6 +27,7 @@ class DependencyMiddleware(BaseMiddleware):
     ) -> Any:
         data["config"] = self.config
         data["db"] = self.db
+        data["ai"] = self.ai
         return await handler(event, data)
 
 
