@@ -1,0 +1,28 @@
+# Muhit va sozlamalar
+.env
+
+# Ma'lumotlar bazasi
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.Python
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Log
+*.log
