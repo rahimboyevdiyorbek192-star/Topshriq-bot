@@ -26,3 +26,6 @@ Thumbs.db
 
 # Log
 *.log
+
+# Build artifacts
+*.zip
