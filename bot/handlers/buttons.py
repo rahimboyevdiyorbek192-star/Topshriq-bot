@@ -39,8 +39,9 @@ def main_reply_kb(is_manager: bool) -> ReplyKeyboardMarkup:
         buttons = [
             [KeyboardButton(text="📋 Topshiriqlar"),  KeyboardButton(text="📊 Svodka")],
             [KeyboardButton(text="📈 Reyting"),        KeyboardButton(text="📄 Excel")],
-            [KeyboardButton(text="🤖 AI Suhbat"),      KeyboardButton(text="💻 Kompyuter")],
-            [KeyboardButton(text="👥 Xodimlar"),        KeyboardButton(text="❓ Yordam")],
+            [KeyboardButton(text="🗂 Umumlashtir"),    KeyboardButton(text="🤖 AI Suhbat")],
+            [KeyboardButton(text="💻 Kompyuter"),       KeyboardButton(text="👥 Xodimlar")],
+            [KeyboardButton(text="❓ Yordam")],
         ]
     else:
         buttons = [
@@ -522,6 +523,36 @@ async def cb_hint(callback: CallbackQuery) -> None:
     key  = callback.data.split(":", 1)[1]
     text = hints.get(key, "ℹ️ Yordam mavjud emas.")
     await callback.answer(text, show_alert=True)
+
+
+# ══════════════════════════════════════════════════════════════
+#  🗂 UMUMLASHTIR TUGMASI
+# ══════════════════════════════════════════════════════════════
+
+def consolidate_tasks_kb(tasks) -> InlineKeyboardMarkup:
+    """Umumlashtirish uchun topshiriqlar tanlovi."""
+    rows = []
+    for t in tasks[:15]:
+        title = t["title"][:30] + ("…" if len(t["title"]) > 30 else "")
+        rows.append([_btn(f"🗂 #{t['id']}  {title}", f"consolidate:{t['id']}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.message(F.text == "🗂 Umumlashtir")
+async def btn_consolidate(message: Message, db: Database, config: Config) -> None:
+    if not (message.from_user and config.is_manager(message.from_user.id)):
+        await message.answer("⛔️ Bu bo'lim faqat rahbar uchun.")
+        return
+    tasks = await db.list_open_tasks()
+    if not tasks:
+        await message.answer("📭 Umumlashtirish uchun ochiq topshiriqlar yo'q.")
+        return
+    await message.answer(
+        "🗂 <b>Qaysi topshiriqni umumlashtirish kerak?</b>\n\n"
+        "Tanlang 👇 — bot barcha xodim fayllarini o'qib,\n"
+        "bitta Excel/Word/PPT + ZIP + AI tahlil yuboradi.",
+        reply_markup=consolidate_tasks_kb(tasks),
+    )
 
 
 # ── /menu komandasi (eski compat) ────────────────────────────
