@@ -285,6 +285,46 @@ class Database:
         total = (await cur.fetchone())["c"]
         return {"done": done, "total": total}
 
+    async def employee_ranking(self) -> list[aiosqlite.Row]:
+        """Xodimlarni bajarilgan topshiriqlar soni bo'yicha tartiblaydi."""
+        cur = await self.conn.execute(
+            """
+            SELECT e.tg_id, e.full_name, e.username,
+                   COUNT(s.id) AS done_count
+            FROM employees e
+            LEFT JOIN submissions s ON s.employee_id = e.tg_id
+            WHERE e.active = 1
+            GROUP BY e.tg_id
+            ORDER BY done_count DESC, e.full_name
+            """
+        )
+        return list(await cur.fetchall())
+
+    async def employee_open_task_stats(self) -> list[aiosqlite.Row]:
+        """Faqat ochiq topshiriqlar bo'yicha statistika."""
+        cur = await self.conn.execute(
+            """
+            SELECT e.tg_id, e.full_name, e.username,
+                   COUNT(s.id) AS done_count,
+                   (SELECT COUNT(*) FROM tasks WHERE status='open') AS open_count
+            FROM employees e
+            LEFT JOIN submissions s
+                   ON s.employee_id = e.tg_id
+                   AND s.task_id IN (SELECT id FROM tasks WHERE status='open')
+            WHERE e.active = 1
+            GROUP BY e.tg_id
+            ORDER BY done_count DESC, e.full_name
+            """
+        )
+        return list(await cur.fetchall())
+
+    async def get_submission(self, task_id: int, employee_id: int) -> Optional[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            "SELECT * FROM submissions WHERE task_id=? AND employee_id=?",
+            (task_id, employee_id),
+        )
+        return await cur.fetchone()
+
     # ---------- Eslatmalar ----------
     async def was_reminder_sent(self, task_id: int, minutes: int) -> bool:
         cur = await self.conn.execute(

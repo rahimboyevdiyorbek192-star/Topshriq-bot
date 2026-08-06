@@ -11,6 +11,6 @@ def setup_routers() -> Router:
     root.include_router(ai_handler.router)
     root.include_router(employees.router)
     root.include_router(reports.router)
-    root.include_router(tasks.router)
-    root.include_router(submissions.router)
+    root.include_router(tasks.router)       # kanal + guruh topshiriqlar
+    root.include_router(submissions.router)  # guruh + DM submission
     return root
