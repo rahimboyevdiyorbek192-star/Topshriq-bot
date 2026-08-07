@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Xonqa Yoshlar Agentligi</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 <style>
 /* ── Ranglar ─────────────────────────────────────────────── */
 :root {
@@ -591,6 +593,7 @@ function updatePage() {
   else if (S.page === 'task-detail') pc.innerHTML = S.isManager ? mgrDetailPage() : empDetailPage();
   else if (S.page === 'create-task') { pc.innerHTML = createTaskPage(); initDeadlineField(); }
   else if (S.page === 'employees')   pc.innerHTML = employeesPage();
+  else if (S.page === 'map')         { pc.innerHTML = mapPage(); loadAndInitMap(); }
 }
 
 function gotoPage(page) {
@@ -611,6 +614,9 @@ function shell() {
     </button>
     <button class="nav-item ${S.page === 'employees' ? 'active' : ''}" data-act="page" data-page="employees">
       <span class="nav-icon">👥</span> Xodimlar
+    </button>
+    <button class="nav-item ${S.page === 'map' ? 'active' : ''}" data-act="page" data-page="map">
+      <span class="nav-icon">📍</span> Joylashuv
     </button>` : '';
 
   const mgrBnav = S.isManager ? `
@@ -619,6 +625,9 @@ function shell() {
     </button>
     <button class="bnav-item ${S.page === 'employees' ? 'active' : ''}" data-act="page" data-page="employees">
       <span class="bnav-icon">👥</span>Xodimlar
+    </button>
+    <button class="bnav-item ${S.page === 'map' ? 'active' : ''}" data-act="page" data-page="map">
+      <span class="bnav-icon">📍</span>Xarita
     </button>` : '';
 
   const logoutBtn = IS_TG ? '' : '<button class="btn-logout" data-act="logout">🚪 Chiqish</button>';
@@ -698,6 +707,9 @@ function loginPage() {
         <label for="remember">Eslab qolish (7 kun)</label>
       </div>
       <button class="btn btn-primary btn-full" id="lbtn" data-act="login">Kirish</button>
+      <div style="margin-top:10px;font-size:11px;color:var(--hint);text-align:center;line-height:1.4">
+        📍 Kirish vaqtida joylashuv ma'lumoti so'raladi — ish nazorati uchun
+      </div>
     </div>
   </div>`;
 }
@@ -715,6 +727,18 @@ function togglePw(id, btn) {
   btn.textContent = i.type === 'password' ? '👁️' : '🙈';
 }
 
+function getGeoCoords() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    const t = setTimeout(() => resolve(null), 5000);
+    navigator.geolocation.getCurrentPosition(
+      pos => { clearTimeout(t); resolve({lat: pos.coords.latitude, lon: pos.coords.longitude}); },
+      ()  => { clearTimeout(t); resolve(null); },
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  });
+}
+
 async function doLogin() {
   const phone = (document.getElementById('lphone') || {}).value || '';
   const pw    = (document.getElementById('lpw')    || {}).value || '';
@@ -723,13 +747,17 @@ async function doLogin() {
 
   if (!phone.trim() || !pw) { formError('lerr', 'Telefon va parolni kiriting'); return; }
 
-  if (btn) { btn.disabled = true; btn.textContent = 'Yuklanmoqda…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Joylashuv aniqlanmoqda…'; }
   formError('lerr', '');
+
+  const coords = await getGeoCoords();
+  if (btn) btn.textContent = 'Yuklanmoqda…';
+
   try {
     const res  = await fetch('/api/login', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({phone: phone.trim(), password: pw}),
+      body: JSON.stringify({phone: phone.trim(), password: pw, lat: coords?.lat ?? null, lon: coords?.lon ?? null}),
     });
     const data = await res.json();
     if (data.error) {
@@ -1196,6 +1224,102 @@ function employeesPage() {
     </div>
   </div>
   <div id="emp-modal"></div>`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   Xodimlar joylashuvi xaritasi (faqat rahbar)
+   ════════════════════════════════════════════════════════════ */
+function mapPage() {
+  return `
+  <div class="detail-body pad-nav">
+    <div class="sec-card" style="margin-bottom:12px">
+      <div class="flex items-center justify-between" style="margin-bottom:8px">
+        <div>
+          <div style="font-size:17px;font-weight:700">📍 Xodimlar joylashuvi</div>
+          <div class="text-hint text-sm">Tizimga kirish yoki hisobot yuborish vaqtidagi joy</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="map-refresh-btn" onclick="loadAndInitMap()">🔄 Yangilash</button>
+      </div>
+      <div id="loc-map" style="width:100%;height:320px;border-radius:10px;border:1px solid var(--border);background:var(--bg)"></div>
+    </div>
+    <div class="sec-card">
+      <div id="loc-table-wrap">
+        <div class="center-box" style="padding:24px"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+let _leafletMap = null;
+
+async function loadAndInitMap() {
+  const wrap = document.getElementById('loc-table-wrap');
+  const mapEl = document.getElementById('loc-map');
+  if (!wrap || !mapEl) return;
+
+  wrap.innerHTML = '<div class="center-box" style="padding:24px"><div class="spinner"></div></div>';
+
+  const data = await api('/api/employees/locations');
+  if (!data || data.error) {
+    wrap.innerHTML = `<p class="text-hint" style="padding:16px;text-align:center">${esc((data && data.error) || 'Xatolik')}</p>`;
+    return;
+  }
+
+  const emps = data.data || [];
+
+  if (!emps.length) {
+    wrap.innerHTML = '<p class="text-hint" style="padding:16px;text-align:center">Hech bir xodimning joylashuvi yo\'q. Xodimlar tizimga kirganda avtomatik saqlanadi.</p>';
+    mapEl.style.display = 'none';
+    return;
+  }
+  mapEl.style.display = '';
+
+  if (typeof L === 'undefined') {
+    mapEl.innerHTML = '<p class="text-hint" style="text-align:center;padding:20px">Xarita yuklanmoqda…</p>';
+  } else {
+    if (_leafletMap) { _leafletMap.remove(); _leafletMap = null; }
+    _leafletMap = L.map('loc-map').setView([emps[0].lat, emps[0].lon], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap'
+    }).addTo(_leafletMap);
+    emps.forEach(e => {
+      L.marker([e.lat, e.lon]).addTo(_leafletMap)
+        .bindPopup(`<b>${esc(e.name)}</b><br>${esc(e.position || '')}<br>${esc(e.last_time)}`);
+    });
+    if (emps.length > 1) {
+      const bounds = L.latLngBounds(emps.map(e => [e.lat, e.lon]));
+      _leafletMap.fitBounds(bounds, {padding: [30, 30]});
+    }
+  }
+
+  const rows = emps.map(e => `
+    <tr>
+      <td>
+        <div style="font-weight:600">${esc(e.name)}</div>
+        ${e.position ? `<div class="text-hint" style="font-size:12px">${esc(e.position)}</div>` : ''}
+        ${!e.active ? '<span class="badge badge-over" style="font-size:10px">Nofaol</span>' : ''}
+      </td>
+      <td class="hide-sm">${esc(e.phone)}</td>
+      <td style="font-size:12px;color:var(--hint)">${esc(e.last_time)}</td>
+      <td>
+        <a href="https://www.google.com/maps?q=${e.lat},${e.lon}" target="_blank"
+           style="color:var(--primary);font-size:13px;text-decoration:none">🗺️ Ko'rish</a>
+      </td>
+    </tr>`).join('');
+
+  wrap.innerHTML = `
+    <div style="font-size:14px;font-weight:600;margin-bottom:10px">Xodimlar ro'yxati (${emps.length} ta)</div>
+    <div class="table-wrap">
+      <table class="emp-table">
+        <thead><tr>
+          <th>Ism Sharif</th>
+          <th class="hide-sm">Telefon</th>
+          <th>Oxirgi vaqt</th>
+          <th>Xarita</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 function openEmpModal(tgId) {

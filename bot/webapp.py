@@ -189,6 +189,14 @@ async def handle_login(request: web.Request) -> web.Response:
     if not phone or not password:
         return _json({"error": "Telefon va parol kerak"}, 400)
 
+    lat = data.get("lat")
+    lon = data.get("lon")
+    try:
+        lat = float(lat) if lat is not None else None
+        lon = float(lon) if lon is not None else None
+    except (TypeError, ValueError):
+        lat = lon = None
+
     db: Database   = request.app["db"]
     config: Config = request.app["config"]
 
@@ -216,6 +224,13 @@ async def handle_login(request: web.Request) -> web.Response:
 
     is_mgr = config.is_manager(emp["tg_id"])
     token  = await db.create_web_session(tg_id=emp["tg_id"], is_manager=is_mgr)
+
+    if lat is not None and lon is not None:
+        try:
+            await db.update_employee_location(emp["tg_id"], lat, lon)
+        except Exception:
+            pass
+
     return _json({
         "ok":    True,
         "token": token,
@@ -721,6 +736,41 @@ async def handle_employees_delete(request: web.Request) -> web.Response:
     return _json({"ok": True})
 
 
+# ── Xodimlar joylashuvi (rahbar uchun) ────────────────────
+
+async def handle_employees_locations(request: web.Request) -> web.Response:
+    user, is_mgr = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if not is_mgr:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+
+    db: Database = request.app["db"]
+    rows = await db.get_employees_with_location()
+
+    data = []
+    for r in rows:
+        loc_time = r["last_location_at"]
+        if loc_time:
+            try:
+                from datetime import datetime as _dt
+                loc_time = _dt.fromisoformat(loc_time).strftime("%d.%m.%Y %H:%M")
+            except Exception:
+                pass
+        data.append({
+            "tg_id":    r["tg_id"],
+            "name":     r["full_name"],
+            "phone":    r["login_phone"] or "—",
+            "position": r["position"] or "",
+            "lat":      r["last_lat"],
+            "lon":      r["last_lon"],
+            "last_time": loc_time or "—",
+            "active":   bool(r["active"]),
+        })
+
+    return _json({"ok": True, "data": data})
+
+
 # ── App factory ────────────────────────────────────────────
 
 def create_webapp(config: Config, db: Database, bot) -> web.Application:
@@ -744,10 +794,11 @@ def create_webapp(config: Config, db: Database, bot) -> web.Application:
     app.router.add_post("/api/submit",                handle_submit)
     app.router.add_get("/api/file/{file_id}",         handle_file_proxy)
 
-    app.router.add_get("/api/employees",            handle_employees_list)
-    app.router.add_post("/api/employees",           handle_employees_add)
-    app.router.add_put("/api/employees/{tg_id}",    handle_employees_update)
-    app.router.add_delete("/api/employees/{tg_id}", handle_employees_delete)
+    app.router.add_get("/api/employees",                    handle_employees_list)
+    app.router.add_post("/api/employees",                   handle_employees_add)
+    app.router.add_get("/api/employees/locations",          handle_employees_locations)
+    app.router.add_put("/api/employees/{tg_id}",            handle_employees_update)
+    app.router.add_delete("/api/employees/{tg_id}",         handle_employees_delete)
 
     if STATIC_DIR.exists():
         app.router.add_static("/static", STATIC_DIR, show_index=False)

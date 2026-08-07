@@ -96,6 +96,9 @@ class Database:
             "ALTER TABLE submissions ADD COLUMN exif_date TEXT",
             "ALTER TABLE submission_files ADD COLUMN exif_date TEXT",
             "ALTER TABLE employees ADD COLUMN last_bot_msg_id INTEGER",
+            "ALTER TABLE employees ADD COLUMN last_lat REAL",
+            "ALTER TABLE employees ADD COLUMN last_lon REAL",
+            "ALTER TABLE employees ADD COLUMN last_location_at TEXT",
         ]:
             try:
                 await self._conn.execute(sql)
@@ -180,6 +183,27 @@ class Database:
             "UPDATE employees SET last_bot_msg_id = ? WHERE tg_id = ?", (msg_id, tg_id)
         )
         await self.conn.commit()
+
+    async def update_employee_location(
+        self, tg_id: int, lat: float, lon: float
+    ) -> None:
+        await self.conn.execute(
+            """UPDATE employees
+               SET last_lat = ?, last_lon = ?, last_location_at = ?
+               WHERE tg_id = ?""",
+            (lat, lon, datetime.now().isoformat(), tg_id),
+        )
+        await self.conn.commit()
+
+    async def get_employees_with_location(self) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            """SELECT tg_id, full_name, login_phone, position,
+                      last_lat, last_lon, last_location_at, active
+               FROM employees
+               WHERE last_lat IS NOT NULL AND last_lon IS NOT NULL
+               ORDER BY last_location_at DESC"""
+        )
+        return list(await cur.fetchall())
 
     # ---------- Topshiriqlar ----------
     async def create_task(
