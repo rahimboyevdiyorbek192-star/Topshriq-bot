@@ -911,13 +911,19 @@ function mgrDetailPage() {
       const oldHtml = s.is_old_photo
         ? '<div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:2px">⚠️ Eski rasm — 24 soatdan oldin olingan</div>'
         : '';
+      const locHtml = (s.submit_lat != null && s.submit_lon != null)
+        ? `<div style="font-size:11px;margin-top:3px">
+             📍 <a href="https://www.google.com/maps?q=${s.submit_lat},${s.submit_lon}" target="_blank"
+                  style="color:var(--primary);text-decoration:none">Yuborgan joyi</a>
+           </div>`
+        : '<div style="font-size:11px;color:var(--warning);margin-top:3px">📍 Joylashuv yo\'q</div>';
       return `
       <div class="sub-item">
         <div class="sub-avatar">${esc(initials(s.full_name))}</div>
         <div class="sub-info">
           <div class="sub-name">${esc(s.full_name)}</div>
           <div class="sub-time">${esc(fmtDate(s.submitted_at))}${s.note ? ' · ' + esc(String(s.note).slice(0,40)) : ''}</div>
-          ${exifHtml}${oldHtml}
+          ${exifHtml}${oldHtml}${locHtml}
         </div>
         ${s.file_id
           ? `<button class="btn btn-ghost btn-sm" data-act="file" data-fid="${esc(s.file_id)}" data-fname="${esc(s.file_name || 'fayl')}">⬇️</button>`
@@ -1058,9 +1064,11 @@ async function doSubmit() {
   document.body.appendChild(ov);
 
   try {
+    const coords = await getGeoCoords();
     const fd = new FormData();
     fd.append('task_id', S.activeTask.id);
     if (S.note.trim()) fd.append('note', S.note.trim());
+    if (coords) { fd.append('lat', coords.lat); fd.append('lon', coords.lon); }
     S.selFiles.forEach(f => fd.append('files[]', f));
 
     const data = await api('/api/submit', {method:'POST', body: fd});

@@ -99,6 +99,8 @@ class Database:
             "ALTER TABLE employees ADD COLUMN last_lat REAL",
             "ALTER TABLE employees ADD COLUMN last_lon REAL",
             "ALTER TABLE employees ADD COLUMN last_location_at TEXT",
+            "ALTER TABLE submissions ADD COLUMN submit_lat REAL",
+            "ALTER TABLE submissions ADD COLUMN submit_lon REAL",
         ]:
             try:
                 await self._conn.execute(sql)
@@ -301,6 +303,8 @@ class Database:
         file_id: str | None,
         file_name: str | None,
         exif_date: str | None = None,
+        submit_lat: float | None = None,
+        submit_lon: float | None = None,
     ) -> bool:
         """Yangi topshirilgan ish qo'shadi. Agar allaqachon topshirilgan bo'lsa yangilaydi.
         Yangi topshiriq bo'lsa True qaytaradi."""
@@ -314,20 +318,24 @@ class Database:
             await self.conn.execute(
                 """
                 UPDATE submissions
-                SET message_id = ?, note = ?, file_id = ?, file_name = ?, exif_date = ?, submitted_at = ?
-                WHERE id = ?
+                SET message_id=?, note=?, file_id=?, file_name=?, exif_date=?,
+                    submit_lat=?, submit_lon=?, submitted_at=?
+                WHERE id=?
                 """,
-                (message_id, note, file_id, file_name, exif_date, now, existing["id"]),
+                (message_id, note, file_id, file_name, exif_date,
+                 submit_lat, submit_lon, now, existing["id"]),
             )
             await self.conn.commit()
             return False
         await self.conn.execute(
             """
             INSERT INTO submissions
-                (task_id, employee_id, message_id, note, file_id, file_name, exif_date, submitted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (task_id, employee_id, message_id, note, file_id, file_name,
+                 exif_date, submit_lat, submit_lon, submitted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, employee_id, message_id, note, file_id, file_name, exif_date, now),
+            (task_id, employee_id, message_id, note, file_id, file_name,
+             exif_date, submit_lat, submit_lon, now),
         )
         await self.conn.commit()
         return True

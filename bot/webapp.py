@@ -338,6 +338,8 @@ async def handle_task_detail(request: web.Request) -> web.Response:
                 "submitted_at": s["submitted_at"],
                 "exif_date":    s["exif_date"],
                 "is_old_photo": _is_old_photo(s["exif_date"], s["submitted_at"] or ""),
+                "submit_lat":   s["submit_lat"],
+                "submit_lon":   s["submit_lon"],
             }
             for s in submissions
         ],
@@ -508,6 +510,8 @@ async def handle_submit(request: web.Request) -> web.Response:
     # keyin kelishi mumkin, u holda caption'da "#None" chiqib qolardi.
     task_id_raw: str | None = None
     note: str | None        = None
+    lat_raw: str | None     = None
+    lon_raw: str | None     = None
     pending: list[tuple[str, bytes, str | None]] = []  # (fname, data, exif_date)
 
     try:
@@ -518,6 +522,10 @@ async def handle_submit(request: web.Request) -> web.Response:
                     task_id_raw = (await field.read(decode=True)).decode("utf-8", "ignore")
                 elif field.name == "note":
                     note = (await field.read(decode=True)).decode("utf-8", "ignore")[:1000]
+                elif field.name == "lat":
+                    lat_raw = (await field.read(decode=True)).decode("utf-8", "ignore")
+                elif field.name == "lon":
+                    lon_raw = (await field.read(decode=True)).decode("utf-8", "ignore")
                 elif field.name in ("file", "files", "files[]"):
                     fdata = await field.read()
                     if fdata:
@@ -529,9 +537,20 @@ async def handle_submit(request: web.Request) -> web.Response:
             task_id_raw = form.get("task_id")
             raw_note    = form.get("note")
             note        = str(raw_note)[:1000] if raw_note else None
+            lat_raw     = form.get("lat")
+            lon_raw     = form.get("lon")
     except Exception as exc:
         logger.warning("Submit so'rovini o'qib bo'lmadi: %s", exc)
         return _json({"error": "So'rovni o'qib bo'lmadi"}, 400)
+
+    submit_lat: float | None = None
+    submit_lon: float | None = None
+    try:
+        if lat_raw and lon_raw:
+            submit_lat = float(lat_raw)
+            submit_lon = float(lon_raw)
+    except (TypeError, ValueError):
+        pass
 
     # ── 2. Tekshiruv ──────────────────────────────────────
     try:
@@ -583,6 +602,8 @@ async def handle_submit(request: web.Request) -> web.Response:
             file_id=uploaded[0][0] if uploaded else None,
             file_name=uploaded[0][1] if uploaded else None,
             exif_date=uploaded[0][2] if uploaded else None,
+            submit_lat=submit_lat,
+            submit_lon=submit_lon,
         )
         for fid, fname, exif_d in uploaded[1:]:
             await db.add_submission_file(task_id, user_id, fid, fname, exif_date=exif_d)
