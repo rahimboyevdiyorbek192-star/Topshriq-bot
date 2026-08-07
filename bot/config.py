@@ -64,6 +64,8 @@ class Config:
     webapp_url: str = ""       # HTTPS URL (masalan: https://topshriq.example.com)
     webapp_host: str = "0.0.0.0"
     webapp_port: int = 8080
+    webapp_manager_phone: str = ""    # Rahbar web login uchun telefon
+    webapp_manager_password: str = "" # Rahbar web login uchun parol
 
     @property
     def ai_enabled(self) -> bool:
@@ -130,4 +132,6 @@ def load_config() -> Config:
         webapp_url=os.getenv("WEBAPP_URL", "").strip(),
         webapp_host=os.getenv("WEBAPP_HOST", "0.0.0.0").strip(),
         webapp_port=int(os.getenv("WEBAPP_PORT", "8080")),
+        webapp_manager_phone=os.getenv("WEBAPP_MANAGER_PHONE", "").strip(),
+        webapp_manager_password=os.getenv("WEBAPP_MANAGER_PASSWORD", "").strip(),
     )

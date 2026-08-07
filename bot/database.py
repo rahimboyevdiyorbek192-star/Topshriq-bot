@@ -1,7 +1,10 @@
 """SQLite ma'lumotlar bazasi bilan ishlash (aiosqlite)."""
 from __future__ import annotations
 
-from datetime import datetime
+import hashlib
+import hmac as _hmac
+import secrets
+from datetime import datetime, timedelta
 from typing import Optional
 
 import aiosqlite
@@ -79,6 +82,29 @@ class Database:
         self._conn.row_factory = aiosqlite.Row
         await self._conn.execute("PRAGMA foreign_keys = ON")
         await self._conn.executescript(SCHEMA)
+        await self._conn.commit()
+        await self._migrate()
+
+    async def _migrate(self) -> None:
+        """Yangi ustunlar va jadvallarni qo'shadi (migratsiya)."""
+        for sql in [
+            "ALTER TABLE employees ADD COLUMN login_phone TEXT",
+            "ALTER TABLE employees ADD COLUMN password_hash TEXT",
+            "ALTER TABLE employees ADD COLUMN position TEXT",
+        ]:
+            try:
+                await self._conn.execute(sql)
+            except Exception:
+                pass
+        await self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS web_sessions (
+                token      TEXT PRIMARY KEY,
+                tg_id      INTEGER NOT NULL,
+                is_manager INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            )
+        """)
         await self._conn.commit()
 
     async def close(self) -> None:
@@ -371,3 +397,134 @@ class Database:
             (task_id, minutes),
         )
         await self.conn.commit()
+
+    # ---------- Parol xeshlash (pbkdf2) ----------
+    @staticmethod
+    def hash_password(password: str) -> str:
+        salt = secrets.token_hex(16)
+        key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000)
+        return f"{salt}:{key.hex()}"
+
+    @staticmethod
+    def verify_password(password: str, stored: str) -> bool:
+        try:
+            salt, key_hex = stored.split(":", 1)
+            key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000)
+            return _hmac.compare_digest(key.hex(), key_hex)
+        except Exception:
+            return False
+
+    # ---------- Web sessiyalar ----------
+    async def create_web_session(
+        self, tg_id: int, is_manager: bool, hours: int = 168
+    ) -> str:
+        token = secrets.token_urlsafe(32)
+        now = datetime.now()
+        expires = (now + timedelta(hours=hours)).isoformat()
+        await self.conn.execute(
+            "INSERT INTO web_sessions (token, tg_id, is_manager, created_at, expires_at) VALUES (?,?,?,?,?)",
+            (token, tg_id, 1 if is_manager else 0, now.isoformat(), expires),
+        )
+        await self.conn.commit()
+        return token
+
+    async def get_web_session(self, token: str) -> Optional[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            "SELECT * FROM web_sessions WHERE token=? AND expires_at>?",
+            (token, datetime.now().isoformat()),
+        )
+        return await cur.fetchone()
+
+    async def delete_web_session(self, token: str) -> None:
+        await self.conn.execute("DELETE FROM web_sessions WHERE token=?", (token,))
+        await self.conn.commit()
+
+    async def cleanup_sessions(self) -> None:
+        await self.conn.execute(
+            "DELETE FROM web_sessions WHERE expires_at<?", (datetime.now().isoformat(),)
+        )
+        await self.conn.commit()
+
+    # ---------- Web xodimlar boshqaruvi ----------
+    async def _next_web_id(self) -> int:
+        """Web xodimlarga manfiy ID beradi (Telegram ID lar bilan to'qnashmaydi)."""
+        cur = await self.conn.execute(
+            "SELECT MIN(tg_id) AS m FROM employees WHERE tg_id < 0"
+        )
+        row = await cur.fetchone()
+        return (row["m"] or 0) - 1
+
+    async def get_employee_by_login_phone(self, phone: str) -> Optional[aiosqlite.Row]:
+        norm = phone.replace(" ", "").replace("-", "")
+        cur = await self.conn.execute(
+            "SELECT * FROM employees WHERE REPLACE(REPLACE(login_phone,' ',''),'-','')=?",
+            (norm,),
+        )
+        return await cur.fetchone()
+
+    async def add_employee_web(
+        self, full_name: str, position: str, login_phone: str, password_hash: str
+    ) -> int:
+        tg_id = await self._next_web_id()
+        await self.conn.execute(
+            """INSERT INTO employees
+               (tg_id, full_name, username, active, created_at, position, login_phone, password_hash)
+               VALUES (?,?,NULL,1,?,?,?,?)""",
+            (tg_id, full_name, datetime.now().isoformat(), position, login_phone, password_hash),
+        )
+        await self.conn.commit()
+        return tg_id
+
+    async def update_employee_web(
+        self,
+        tg_id: int,
+        full_name: str,
+        position: str,
+        login_phone: str,
+        password_hash: Optional[str],
+        active: int,
+    ) -> None:
+        if password_hash:
+            await self.conn.execute(
+                """UPDATE employees SET full_name=?,position=?,login_phone=?,
+                   password_hash=?,active=? WHERE tg_id=?""",
+                (full_name, position, login_phone, password_hash, active, tg_id),
+            )
+        else:
+            await self.conn.execute(
+                "UPDATE employees SET full_name=?,position=?,login_phone=?,active=? WHERE tg_id=?",
+                (full_name, position, login_phone, active, tg_id),
+            )
+        await self.conn.commit()
+
+    async def delete_employee_web(self, tg_id: int) -> None:
+        await self.conn.execute("DELETE FROM employees WHERE tg_id=?", (tg_id,))
+        await self.conn.commit()
+
+    async def list_employees_web(self) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            "SELECT * FROM employees ORDER BY full_name COLLATE NOCASE"
+        )
+        return list(await cur.fetchall())
+
+    # ---------- ZIP uchun ma'lumotlar ----------
+    async def get_all_task_submissions(self, task_id: int) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            """SELECT s.*, e.full_name, e.username
+               FROM submissions s
+               LEFT JOIN employees e ON e.tg_id = s.employee_id
+               WHERE s.task_id=?
+               ORDER BY e.full_name COLLATE NOCASE""",
+            (task_id,),
+        )
+        return list(await cur.fetchall())
+
+    async def get_all_submission_files_for_task(self, task_id: int) -> list[aiosqlite.Row]:
+        cur = await self.conn.execute(
+            """SELECT sf.*, e.full_name
+               FROM submission_files sf
+               LEFT JOIN employees e ON e.tg_id = sf.employee_id
+               WHERE sf.task_id=?""",
+            (task_id,),
+        )
+        return list(await cur.fetchall())

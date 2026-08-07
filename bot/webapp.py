@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import hashlib
 import hmac as _hmac
+import io
 import json
 import logging
 import urllib.parse
+import zipfile
 from pathlib import Path
 
 import httpx
+import openpyxl
 from aiohttp import web
 
 from .config import Config
@@ -18,28 +21,27 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 
 
-# ── initData tekshirish ────────────────────────────────────────
+# ── Parol tekshiruvi ───────────────────────────────────────
+def _check_manager_password(plain: str, stored: str) -> bool:
+    return _hmac.compare_digest(plain, stored)
 
+
+# ── initData tekshirish ────────────────────────────────────
 def _validate_init_data(init_data: str, bot_token: str) -> dict | None:
-    """Telegram Web App initData HMAC-SHA256 tekshiradi."""
     if not init_data:
         return None
     try:
         parsed = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
     except Exception:
         return None
-
     hash_val = parsed.pop("hash", None)
     if not hash_val:
         return None
-
     data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
     secret = _hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
     calc   = _hmac.new(secret, data_check.encode(), hashlib.sha256).hexdigest()
-
     if not _hmac.compare_digest(calc, hash_val):
         return None
-
     user_raw = parsed.get("user")
     if not user_raw:
         return None
@@ -49,20 +51,51 @@ def _validate_init_data(init_data: str, bot_token: str) -> dict | None:
         return None
 
 
-async def _auth(request: web.Request) -> dict | None:
-    # Header yoki query param orqali qabul qilinadi (fayl yuklab olish uchun)
+async def _auth_full(request: web.Request) -> tuple[dict | None, bool]:
+    """(user_dict, is_manager) yoki (None, False) qaytaradi."""
+    config: Config = request.app["config"]
+    db: Database   = request.app["db"]
+
+    # 1. Telegram initData
     init_data = (
         request.headers.get("X-Telegram-Init-Data", "")
         or request.rel_url.query.get("init", "")
     )
-    config: Config = request.app["config"]
-    return _validate_init_data(init_data, config.bot_token)
+    if init_data:
+        user = _validate_init_data(init_data, config.bot_token)
+        if user:
+            return user, config.is_manager(user.get("id", 0))
+
+    # 2. Web session token
+    token = (
+        request.headers.get("X-Session-Token", "")
+        or request.rel_url.query.get("token", "")
+    )
+    if token:
+        session = await db.get_web_session(token)
+        if session:
+            if session["is_manager"]:
+                return {"id": 0, "first_name": "Rahbar"}, True
+            emp = await db.get_employee(session["tg_id"])
+            if emp and emp["active"]:
+                return (
+                    {"id": emp["tg_id"], "first_name": emp["full_name"]},
+                    config.is_manager(emp["tg_id"]),
+                )
+    return None, False
+
+
+async def _auth(request: web.Request) -> dict | None:
+    user, _ = await _auth_full(request)
+    return user
 
 
 def _cors(resp: web.Response) -> web.Response:
     resp.headers["Access-Control-Allow-Origin"]  = "*"
-    resp.headers["Access-Control-Allow-Headers"] = "X-Telegram-Init-Data, Content-Type"
-    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = (
+        "X-Telegram-Init-Data, X-Session-Token, Content-Type"
+    )
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     return resp
 
 
@@ -70,7 +103,7 @@ def _json(data, status: int = 200) -> web.Response:
     return _cors(web.json_response(data, status=status))
 
 
-# ── Handlerlar ────────────────────────────────────────────────
+# ── Umumiy ────────────────────────────────────────────────
 
 async def handle_options(request: web.Request) -> web.Response:
     return _cors(web.Response(status=200))
@@ -83,19 +116,84 @@ async def handle_index(request: web.Request) -> web.Response:
     )
 
 
+# ── Auth ───────────────────────────────────────────────────
+
+async def handle_login(request: web.Request) -> web.Response:
+    try:
+        data = await request.json()
+    except Exception:
+        return _json({"error": "JSON kerak"}, 400)
+
+    phone    = data.get("phone", "").strip()
+    password = data.get("password", "")
+    if not phone or not password:
+        return _json({"error": "Telefon va parol kerak"}, 400)
+
+    db: Database   = request.app["db"]
+    config: Config = request.app["config"]
+
+    # Rahbar tekshiruvi
+    mgr_phone  = config.webapp_manager_phone.replace(" ", "").replace("-", "")
+    user_phone = phone.replace(" ", "").replace("-", "")
+    if mgr_phone and user_phone == mgr_phone:
+        if not config.webapp_manager_password:
+            return _json({"error": "Rahbar paroli sozlanmagan"}, 500)
+        if not _check_manager_password(password, config.webapp_manager_password):
+            return _json({"error": "Noto'g'ri parol"}, 401)
+        token = await db.create_web_session(tg_id=0, is_manager=True)
+        return _json({"ok": True, "token": token, "role": "manager", "name": "Rahbar"})
+
+    # Xodim tekshiruvi
+    emp = await db.get_employee_by_login_phone(phone)
+    if not emp:
+        return _json({"error": "Bunday telefon raqam topilmadi"}, 401)
+    if not emp["password_hash"]:
+        return _json({"error": "Parol o'rnatilmagan, rahbarga murojaat qiling"}, 401)
+    if not Database.verify_password(password, emp["password_hash"]):
+        return _json({"error": "Noto'g'ri parol"}, 401)
+    if not emp["active"]:
+        return _json({"error": "Hisobingiz faol emas"}, 403)
+
+    is_mgr = config.is_manager(emp["tg_id"])
+    token  = await db.create_web_session(tg_id=emp["tg_id"], is_manager=is_mgr)
+    return _json({
+        "ok":    True,
+        "token": token,
+        "role":  "manager" if is_mgr else "employee",
+        "name":  emp["full_name"],
+    })
+
+
+async def handle_logout(request: web.Request) -> web.Response:
+    token = (
+        request.headers.get("X-Session-Token", "")
+        or request.rel_url.query.get("token", "")
+    )
+    if token:
+        db: Database = request.app["db"]
+        await db.delete_web_session(token)
+    return _json({"ok": True})
+
+
+async def handle_me(request: web.Request) -> web.Response:
+    user, is_mgr = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    return _json({"user": user, "is_manager": is_mgr})
+
+
+# ── Topshiriqlar ───────────────────────────────────────────
+
 async def handle_tasks(request: web.Request) -> web.Response:
-    user = await _auth(request)
+    user, is_manager = await _auth_full(request)
     if not user:
         return _json({"error": "Ruxsat yo'q"}, 403)
 
     db: Database = request.app["db"]
-    config: Config = request.app["config"]
-    user_id   = user["id"]
-    is_manager = config.is_manager(user_id)
-
-    tasks     = await db.list_open_tasks()
-    total_emp = await db.count_employees()
-    result    = []
+    user_id      = user["id"]
+    tasks        = await db.list_open_tasks()
+    total_emp    = await db.count_employees()
+    result       = []
 
     for t in tasks:
         submitted_ids = await db.submitted_employee_ids(t["id"])
@@ -103,17 +201,17 @@ async def handle_tasks(request: web.Request) -> web.Response:
         my_sub        = await db.get_submission(t["id"], user_id)
 
         result.append({
-            "id":            t["id"],
-            "title":         t["title"],
-            "description":   t["description"] or "",
-            "deadline":      t["deadline"] or "",
+            "id":              t["id"],
+            "title":           t["title"],
+            "description":     t["description"] or "",
+            "deadline":        t["deadline"] or "",
             "submitted_by_me": user_id in submitted_ids,
-            "done_count":    len(submitted_ids),
-            "total_count":   total_emp,
+            "done_count":      len(submitted_ids),
+            "total_count":     total_emp,
             "files": [
                 {
                     "file_id":   f["file_id"],
-                    "file_name": f["file_name"] or f"fayl",
+                    "file_name": f["file_name"] or "fayl",
                     "kind":      f["file_kind"],
                 }
                 for f in task_files
@@ -128,8 +226,201 @@ async def handle_tasks(request: web.Request) -> web.Response:
     return _json({"tasks": result, "is_manager": is_manager, "user": user})
 
 
+async def handle_task_detail(request: web.Request) -> web.Response:
+    """Rahbar uchun topshiriq bo'yicha batafsil svodka."""
+    user, is_mgr = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 403)
+    if not is_mgr:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+
+    task_id = int(request.match_info.get("task_id", "0"))
+    db: Database = request.app["db"]
+
+    task = await db.get_task(task_id)
+    if not task:
+        return _json({"error": "Topshiriq topilmadi"}, 404)
+
+    submissions = await db.get_all_task_submissions(task_id)
+    total_emp   = await db.count_employees()
+    task_files  = await db.get_task_files(task_id)
+
+    return _json({
+        "task": {
+            "id":          task["id"],
+            "title":       task["title"],
+            "description": task["description"] or "",
+            "deadline":    task["deadline"] or "",
+        },
+        "submissions": [
+            {
+                "employee_id":  s["employee_id"],
+                "full_name":    s["full_name"] or f"#{s['employee_id']}",
+                "username":     s["username"],
+                "file_id":      s["file_id"],
+                "file_name":    s["file_name"],
+                "note":         s["note"],
+                "submitted_at": s["submitted_at"],
+            }
+            for s in submissions
+        ],
+        "total_count":     total_emp,
+        "submitted_count": len(submissions),
+        "task_files": [
+            {"file_id": f["file_id"], "file_name": f["file_name"] or "fayl", "kind": f["file_kind"]}
+            for f in task_files
+        ],
+    })
+
+
+async def handle_task_zip(request: web.Request) -> web.Response:
+    """Topshiriq uchun barcha fayllarni ZIP qilib yuboradi."""
+    user, is_mgr = await _auth_full(request)
+    if not user:
+        return web.Response(status=401)
+    if not is_mgr:
+        return web.Response(status=403)
+
+    task_id = int(request.match_info.get("task_id", "0"))
+    db: Database   = request.app["db"]
+    bot            = request.app["bot"]
+    config: Config = request.app["config"]
+
+    task = await db.get_task(task_id)
+    if not task:
+        return web.Response(status=404)
+
+    submissions = await db.get_all_task_submissions(task_id)
+    extra_files = await db.get_all_submission_files_for_task(task_id)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Excel svodka
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Svodka"
+        ws.column_dimensions["A"].width = 4
+        ws.column_dimensions["B"].width = 28
+        ws.column_dimensions["C"].width = 10
+        ws.column_dimensions["D"].width = 20
+        ws.column_dimensions["E"].width = 30
+        ws.column_dimensions["F"].width = 40
+        ws.append(["#", "F.I.O.", "Topshirdi", "Vaqt", "Fayl", "Izoh"])
+        for i, s in enumerate(submissions, 1):
+            ws.append([
+                i,
+                s["full_name"] or f"#{s['employee_id']}",
+                "Ha",
+                s["submitted_at"],
+                s["file_name"] or "",
+                s["note"] or "",
+            ])
+        xl_buf = io.BytesIO()
+        wb.save(xl_buf)
+        zf.writestr("svodka.xlsx", xl_buf.getvalue())
+
+        # Fayllarni Telegram dan yuklash
+        async with httpx.AsyncClient(timeout=30) as client:
+            used: set[str] = set()
+
+            async def _dl(file_id: str, file_name: str | None, folder: str) -> None:
+                if not file_id:
+                    return
+                try:
+                    tg_file  = await bot.get_file(file_id)
+                    file_url = (
+                        f"https://api.telegram.org/file/bot"
+                        f"{config.bot_token}/{tg_file.file_path}"
+                    )
+                    r = await client.get(file_url)
+                    r.raise_for_status()
+                    fname = file_name or tg_file.file_path.split("/")[-1] or "fayl"
+                    arc_name = f"{folder}/{fname}"
+                    n = 0
+                    while arc_name in used:
+                        n += 1
+                        base, _, ext = fname.rpartition(".")
+                        arc_name = f"{folder}/{base}_{n}.{ext}" if ext else f"{folder}/{fname}_{n}"
+                    used.add(arc_name)
+                    zf.writestr(arc_name, r.content)
+                except Exception as exc:
+                    logger.warning("ZIP fayl yuklanmadi %s: %s", file_id, exc)
+
+            for s in submissions:
+                if s["file_id"]:
+                    folder = (s["full_name"] or str(s["employee_id"])).replace("/", "_")
+                    await _dl(s["file_id"], s["file_name"], folder)
+
+            for ef in extra_files:
+                folder = (ef["full_name"] or str(ef["employee_id"])).replace("/", "_")
+                await _dl(ef["file_id"], ef["file_name"], folder)
+
+    buf.seek(0)
+    safe = task["title"][:40].replace("/", "_")
+    resp = _cors(web.Response(
+        body=buf.getvalue(),
+        content_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="topshiriq_{task_id}_{safe}.zip"'},
+    ))
+    return resp
+
+
+# ── Topshiriq yaratish (rahbar) ────────────────────────────
+
+async def handle_tasks_create(request: web.Request) -> web.Response:
+    """Rahbar uchun yangi topshiriq yaratadi."""
+    user, is_mgr = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 403)
+    if not is_mgr:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+
+    try:
+        data = await request.json()
+    except Exception:
+        return _json({"error": "JSON kerak"}, 400)
+
+    title = (data.get("title") or "").strip()
+    if not title:
+        return _json({"error": "Topshiriq nomi majburiy"}, 400)
+
+    description = (data.get("description") or "").strip() or None
+    deadline    = (data.get("deadline") or "").strip() or None
+
+    db: Database   = request.app["db"]
+    config: Config = request.app["config"]
+
+    task_id = await db.create_task(
+        title=title,
+        description=description,
+        deadline=deadline,
+        created_by=user.get("id"),
+        src_chat_id=None,
+        src_msg_id=None,
+    )
+
+    try:
+        bot = request.app["bot"]
+        if config.execution_group_id:
+            dl_text = deadline or "belgilanmagan"
+            text = (
+                f"📋 <b>Yangi topshiriq #{task_id}</b>\n"
+                f"📌 {title}\n"
+                f"📅 Muddat: {dl_text}"
+            )
+            if description:
+                text += f"\n📝 {description[:200]}"
+            await bot.send_message(config.execution_group_id, text)
+    except Exception as exc:
+        logger.warning("Topshiriq e'lon xato: %s", exc)
+
+    return _json({"ok": True, "task_id": task_id})
+
+
+# ── Fayl topshirish ────────────────────────────────────────
+
 async def handle_submit(request: web.Request) -> web.Response:
-    user = await _auth(request)
+    user, _ = await _auth_full(request)
     if not user:
         return _json({"error": "Ruxsat yo'q"}, 403)
 
@@ -141,22 +432,19 @@ async def handle_submit(request: web.Request) -> web.Response:
         reader         = await request.multipart()
         task_id        = None
         note           = None
-        uploaded_files: list[tuple[str, str]] = []  # [(file_id, file_name)]
+        uploaded_files: list[tuple[str, str]] = []
 
         async for field in reader:
             if field.name == "task_id":
                 task_id = int(await field.read(decode=True))
-
             elif field.name == "note":
                 raw  = await field.read(decode=True)
                 note = raw.decode("utf-8", errors="ignore")[:1000]
-
             elif field.name in ("file", "files", "files[]"):
                 fn    = field.filename or "fayl"
                 fdata = await field.read()
                 if not fdata:
                     continue
-
                 send_chat = config.execution_group_id or (
                     config.manager_ids[0] if config.manager_ids else None
                 )
@@ -168,11 +456,8 @@ async def handle_submit(request: web.Request) -> web.Response:
                     )
                     uname   = f"@{user['username']}" if user.get("username") else full_name
                     caption = (
-                        f"📱 <b>Mini App topshiriq</b>\n"
-                        f"👤 {uname}\n"
-                        f"📋 #{task_id}"
-                        if not uploaded_files
-                        else None
+                        f"📱 <b>Mini App topshiriq</b>\n👤 {uname}\n📋 #{task_id}"
+                        if not uploaded_files else None
                     )
                     sent = await bot.send_document(
                         send_chat,
@@ -193,24 +478,20 @@ async def handle_submit(request: web.Request) -> web.Response:
         full_name = (
             f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or "Xodim"
         )
-        username  = user.get("username")
+        username = user.get("username")
 
-        if not await db.get_employee(user_id):
+        if user_id != 0 and not await db.get_employee(user_id):
             await db.add_employee(user_id, full_name, username)
 
         primary_fid  = uploaded_files[0][0] if uploaded_files else None
         primary_name = uploaded_files[0][1] if uploaded_files else None
 
         await db.add_submission(
-            task_id=task_id,
-            employee_id=user_id,
-            message_id=None,
+            task_id=task_id, employee_id=user_id, message_id=None,
             note=note or "Mini App orqali yuborildi",
-            file_id=primary_fid,
-            file_name=primary_name,
+            file_id=primary_fid, file_name=primary_name,
         )
 
-        # Qo'shimcha fayllarni submission_files ga saqlash
         if len(uploaded_files) > 1:
             for fid, fname in uploaded_files[1:]:
                 await db.add_submission_file(task_id, user_id, fid, fname)
@@ -219,10 +500,8 @@ async def handle_submit(request: web.Request) -> web.Response:
         total     = await db.count_employees()
 
         return _json({
-            "ok":         True,
-            "done_count": len(submitted),
-            "total_count": total,
-            "files_uploaded": len(uploaded_files),
+            "ok": True, "done_count": len(submitted),
+            "total_count": total, "files_uploaded": len(uploaded_files),
         })
 
     except Exception as exc:
@@ -230,9 +509,10 @@ async def handle_submit(request: web.Request) -> web.Response:
         return _json({"error": str(exc)}, 500)
 
 
+# ── Fayl proxy ─────────────────────────────────────────────
+
 async def handle_file_proxy(request: web.Request) -> web.Response:
-    """Telegram faylini proksi orqali yuboradi (bot token ochiq qolmaydi)."""
-    user = await _auth(request)
+    user, _ = await _auth_full(request)
     if not user:
         return web.Response(status=403)
 
@@ -248,12 +528,10 @@ async def handle_file_proxy(request: web.Request) -> web.Response:
         async with httpx.AsyncClient() as client:
             r = await client.get(file_url)
             r.raise_for_status()
-
         fname = tg_file.file_path.split("/")[-1] if tg_file.file_path else "fayl"
         ctype = r.headers.get("content-type", "application/octet-stream")
         return _cors(web.Response(
-            body=r.content,
-            content_type=ctype,
+            body=r.content, content_type=ctype,
             headers={"Content-Disposition": f'attachment; filename="{fname}"'},
         ))
     except Exception as exc:
@@ -261,19 +539,116 @@ async def handle_file_proxy(request: web.Request) -> web.Response:
         return web.Response(status=500)
 
 
-# ── App factory ───────────────────────────────────────────────
+# ── Xodimlar boshqaruvi (rahbar) ───────────────────────────
+
+async def handle_employees_list(request: web.Request) -> web.Response:
+    user, is_mgr = await _auth_full(request)
+    if not user or not is_mgr:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+    db: Database = request.app["db"]
+    emps = await db.list_employees_web()
+    return _json({"employees": [
+        {
+            "tg_id":        e["tg_id"],
+            "full_name":    e["full_name"],
+            "position":     e["position"] or "",
+            "login_phone":  e["login_phone"] or "",
+            "username":     e["username"] or "",
+            "active":       bool(e["active"]),
+            "has_password": bool(e["password_hash"]),
+        }
+        for e in emps
+    ]})
+
+
+async def handle_employees_add(request: web.Request) -> web.Response:
+    user, is_mgr = await _auth_full(request)
+    if not user or not is_mgr:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+    try:
+        data = await request.json()
+    except Exception:
+        return _json({"error": "JSON kerak"}, 400)
+
+    full_name   = data.get("full_name", "").strip()
+    position    = data.get("position", "").strip()
+    login_phone = data.get("login_phone", "").strip()
+    password    = data.get("password", "").strip()
+
+    if not full_name or not login_phone or not password:
+        return _json({"error": "Ism, telefon va parol majburiy"}, 400)
+
+    db: Database = request.app["db"]
+    if await db.get_employee_by_login_phone(login_phone):
+        return _json({"error": "Bu telefon raqam allaqachon ro'yxatda"}, 409)
+
+    pw_hash = Database.hash_password(password)
+    tg_id   = await db.add_employee_web(full_name, position, login_phone, pw_hash)
+    return _json({"ok": True, "tg_id": tg_id})
+
+
+async def handle_employees_update(request: web.Request) -> web.Response:
+    user, is_mgr = await _auth_full(request)
+    if not user or not is_mgr:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+    tg_id = int(request.match_info.get("tg_id", "0"))
+    try:
+        data = await request.json()
+    except Exception:
+        return _json({"error": "JSON kerak"}, 400)
+
+    full_name   = data.get("full_name", "").strip()
+    position    = data.get("position", "").strip()
+    login_phone = data.get("login_phone", "").strip()
+    password    = data.get("password", "").strip()
+    active      = int(data.get("active", 1))
+
+    if not full_name or not login_phone:
+        return _json({"error": "Ism va telefon majburiy"}, 400)
+
+    db: Database = request.app["db"]
+    pw_hash = Database.hash_password(password) if password else None
+    await db.update_employee_web(tg_id, full_name, position, login_phone, pw_hash, active)
+    return _json({"ok": True})
+
+
+async def handle_employees_delete(request: web.Request) -> web.Response:
+    user, is_mgr = await _auth_full(request)
+    if not user or not is_mgr:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+    tg_id = int(request.match_info.get("tg_id", "0"))
+    db: Database = request.app["db"]
+    await db.delete_employee_web(tg_id)
+    return _json({"ok": True})
+
+
+# ── App factory ────────────────────────────────────────────
 
 def create_webapp(config: Config, db: Database, bot) -> web.Application:
-    app = web.Application(client_max_size=50 * 1024 * 1024)  # 50 MB limit
+    app = web.Application(client_max_size=50 * 1024 * 1024)
     app["config"] = config
     app["db"]     = db
     app["bot"]    = bot
 
     app.router.add_route("OPTIONS", "/{path_info:.*}", handle_options)
-    app.router.add_get("/",                       handle_index)
-    app.router.add_get("/api/tasks",              handle_tasks)
-    app.router.add_post("/api/submit",            handle_submit)
-    app.router.add_get("/api/file/{file_id}",     handle_file_proxy)
+
+    app.router.add_get("/",  handle_index)
+
+    app.router.add_post("/api/login",  handle_login)
+    app.router.add_post("/api/logout", handle_logout)
+    app.router.add_get("/api/me",      handle_me)
+
+    app.router.add_get("/api/tasks",                  handle_tasks)
+    app.router.add_post("/api/tasks",                 handle_tasks_create)
+    app.router.add_get("/api/tasks/{task_id}/detail", handle_task_detail)
+    app.router.add_get("/api/tasks/{task_id}/zip",    handle_task_zip)
+    app.router.add_post("/api/submit",                handle_submit)
+    app.router.add_get("/api/file/{file_id}",         handle_file_proxy)
+
+    app.router.add_get("/api/employees",            handle_employees_list)
+    app.router.add_post("/api/employees",           handle_employees_add)
+    app.router.add_put("/api/employees/{tg_id}",    handle_employees_update)
+    app.router.add_delete("/api/employees/{tg_id}", handle_employees_delete)
 
     if STATIC_DIR.exists():
         app.router.add_static("/static", STATIC_DIR, show_index=False)
