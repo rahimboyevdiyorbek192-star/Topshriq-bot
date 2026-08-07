@@ -1,13 +1,13 @@
 @echo off
-chcp 65001 >nul
 title Topshiriq Bot - Ishga tushirish
 
-echo ╔══════════════════════════════════════════╗
-echo ║   TOPSHIRIQ BOTI - ISHGA TUSHIRISH      ║
-echo ╚══════════════════════════════════════════╝
+echo.
+echo ===================================================
+echo    TOPSHIRIQ BOTI - ISHGA TUSHIRISH
+echo ===================================================
 echo.
 
-:: Virtual muhit mavjudligini tekshirish
+:: Virtual muhit tekshirish
 if not exist "venv\Scripts\activate.bat" (
     echo [XATO] Virtual muhit topilmadi!
     echo Avval install.bat ni ishga tushiring.
@@ -16,22 +16,22 @@ if not exist "venv\Scripts\activate.bat" (
     exit /b 1
 )
 
-:: .env mavjudligini tekshirish
+:: .env tekshirish
 if not exist ".env" (
     echo [XATO] .env fayli topilmadi!
-    echo Avval install.bat ni ishga tushiring va .env ni to'ldiring.
+    echo install.bat ni ishga tushiring va .env ni to'ldiring.
     echo.
     pause
     exit /b 1
 )
 
-:: Virtual muhitni faollashtirish va botni ishga tushirish
+:: Botni ishga tushirish
 call venv\Scripts\activate.bat
 
 echo Bot ishga tushmoqda...
 echo To'xtatish uchun: Ctrl+C
 echo.
-echo ─────────────────────────────────────────
+echo ---------------------------------------------------
 echo.
 
 python run.py

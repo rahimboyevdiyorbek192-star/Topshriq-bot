@@ -1,19 +1,21 @@
 @echo off
-chcp 65001 >nul
 title Robot Mutaxassis Bot - O'rnatish
 
-echo ╔═══════════════════════════════════════════════════╗
-echo ║    ROBOT MUTAXASSIS BOT - O'RNATISH DASTURI      ║
-echo ╚═══════════════════════════════════════════════════╝
+echo.
+echo ===================================================
+echo    ROBOT MUTAXASSIS BOT - O'RNATISH
+echo ===================================================
 echo.
 
-:: Python mavjudligini tekshirish
+:: Python tekshirish
 python --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [XATO] Python topilmadi!
     echo.
-    echo Python 3.11+ ni https://www.python.org/downloads/ dan yuklab o'rnating.
-    echo O'rnatayotganda "Add Python to PATH" degan katakchani belgilang!
+    echo Python 3.11+ ni yuklab o'rnating:
+    echo https://www.python.org/downloads/
+    echo.
+    echo O'rnatayotganda "Add Python to PATH" ni belgilang!
     echo.
     pause
     exit /b 1
@@ -23,55 +25,50 @@ echo [1/4] Python topildi:
 python --version
 echo.
 
-:: Virtual muhit yaratish
+:: Virtual muhit
 echo [2/4] Virtual muhit yaratilmoqda...
 if not exist "venv" (
     python -m venv venv
-    echo     Virtual muhit yaratildi.
+    echo     Yaratildi.
 ) else (
-    echo     Virtual muhit allaqachon mavjud.
+    echo     Allaqachon mavjud.
 )
 echo.
 
-:: Kutubxonalarni o'rnatish
-echo [3/4] Kutubxonalar o'rnatilmoqda (Pillow, Telethon va boshqalar)...
+:: Kutubxonalar
+echo [3/4] Kutubxonalar o'rnatilmoqda...
 call venv\Scripts\activate.bat
 pip install -r requirements.txt --quiet
 echo     Barcha kutubxonalar o'rnatildi.
 echo.
 
-:: .env faylini yaratish
+:: .env fayl
 echo [4/4] Sozlamalar fayli tekshirilmoqda...
 if not exist ".env" (
     copy .env.example .env >nul
     echo.
-    echo ╔══════════════════════════════════════════════════════════╗
-    echo ║  MUHIM: .env faylini to'ldiring!                        ║
-    echo ║                                                          ║
-    echo ║  1. .env faylini Notepad bilan oching                    ║
-    echo ║  2. BOT_TOKEN — @BotFather dan oling                     ║
-    echo ║  3. MANAGER_IDS — o'z Telegram ID'ingiz                  ║
-    echo ║  4. TASKS_GROUP_ID — topshiriqlar guruhi ID'si           ║
-    echo ║  5. EXECUTION_GROUP_ID — ijro guruhi ID'si               ║
-    echo ║                                                          ║
-    echo ║  AI uchun (BEPUL variant tavsiya etiladi):               ║
-    echo ║  6. USE_OLLAMA=true deb yozing                          ║
-    echo ║  7. Ollama yuklab o'rnating: https://ollama.ai          ║
-    echo ║  8. Matn uchun:   ollama pull llama3                    ║
-    echo ║     Rasm uchun:   ollama pull llava                     ║
-    echo ║     (llava - /kompyuter komandasi uchun ham kerak)      ║
-    echo ║                                                          ║
-    echo ║  Userbot uchun (ixtiyoriy):                              ║
-    echo ║  9. python generate_session.py ni ishga tushiring        ║
-    echo ╚══════════════════════════════════════════════════════════╝
+    echo ===================================================
+    echo  MUHIM: .env faylini Notepad bilan oching va
+    echo  quyidagilarni to'ldiring:
+    echo.
+    echo  BOT_TOKEN        - @BotFather dan oling
+    echo  MANAGER_IDS      - o'z Telegram ID'ingiz
+    echo  TASKS_GROUP_ID   - topshiriqlar guruhi ID
+    echo  EXECUTION_GROUP_ID - ijro guruhi ID
+    echo.
+    echo  AI uchun (bepul):
+    echo  USE_OLLAMA=true
+    echo  ollama.ai dan Ollama yuklab o'rnating
+    echo  Keyin: ollama pull llava
+    echo ===================================================
 ) else (
     echo     .env fayli allaqachon mavjud.
 )
 
 echo.
-echo ═══════════════════════════════════════════════════
+echo ===================================================
 echo  O'rnatish tugadi!
-echo  Keyingi qadam: .env faylini to'ldirib, start.bat bosing.
-echo ═══════════════════════════════════════════════════
+echo  Keyingi qadam: .env ni to'ldirib, start.bat bosing.
+echo ===================================================
 echo.
 pause
