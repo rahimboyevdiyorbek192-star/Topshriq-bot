@@ -16,6 +16,7 @@ from aiohttp import web
 
 from .config import Config
 from .database import Database
+from .utils.deadline import format_deadline
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -24,6 +25,34 @@ STATIC_DIR = Path(__file__).parent / "static"
 # ── Parol tekshiruvi ───────────────────────────────────────
 def _check_manager_password(plain: str, stored: str) -> bool:
     return _hmac.compare_digest(plain, stored)
+
+
+# ── Fayl nomi yordamchilari ────────────────────────────────
+def _safe_filename(name: str) -> str:
+    """Yo'l ajratgichlari va boshqaruv belgilarini olib tashlaydi."""
+    name = (name or "").replace("\\", "/").split("/")[-1]
+    name = "".join(ch for ch in name if ch.isprintable() and ch not in '"\r\n')
+    return name.strip() or "fayl"
+
+
+def _content_disposition(fname: str) -> str:
+    """Kirill/lotin harflari uchun RFC 5987 sarlavhasi."""
+    ascii_fb = fname.encode("ascii", "ignore").decode() or "fayl"
+    quoted   = urllib.parse.quote(fname, safe="")
+    return f"attachment; filename=\"{ascii_fb}\"; filename*=UTF-8''{quoted}"
+
+
+def _unique_arcname(folder: str, fname: str, used: set[str]) -> str:
+    """ZIP ichida takrorlanmas yo'l qaytaradi: hisobot.docx → hisobot_1.docx"""
+    stem, dot, ext = fname.rpartition(".")
+    if not dot:              # kengaytmasiz fayl: rpartition ('', '', 'nom') qaytaradi
+        stem, ext = fname, ""
+    arc, n = f"{folder}/{fname}", 0
+    while arc in used:
+        n += 1
+        arc = f"{folder}/{stem}_{n}.{ext}" if ext else f"{folder}/{stem}_{n}"
+    used.add(arc)
+    return arc
 
 
 # ── initData tekshirish ────────────────────────────────────
@@ -83,11 +112,6 @@ async def _auth_full(request: web.Request) -> tuple[dict | None, bool]:
                     config.is_manager(emp["tg_id"]),
                 )
     return None, False
-
-
-async def _auth(request: web.Request) -> dict | None:
-    user, _ = await _auth_full(request)
-    return user
 
 
 def _cors(resp: web.Response) -> web.Response:
@@ -187,7 +211,7 @@ async def handle_me(request: web.Request) -> web.Response:
 async def handle_tasks(request: web.Request) -> web.Response:
     user, is_manager = await _auth_full(request)
     if not user:
-        return _json({"error": "Ruxsat yo'q"}, 403)
+        return _json({"error": "Ruxsat yo'q"}, 401)
 
     db: Database = request.app["db"]
     user_id      = user["id"]
@@ -230,7 +254,7 @@ async def handle_task_detail(request: web.Request) -> web.Response:
     """Rahbar uchun topshiriq bo'yicha batafsil svodka."""
     user, is_mgr = await _auth_full(request)
     if not user:
-        return _json({"error": "Ruxsat yo'q"}, 403)
+        return _json({"error": "Ruxsat yo'q"}, 401)
     if not is_mgr:
         return _json({"error": "Faqat rahbar uchun"}, 403)
 
@@ -334,35 +358,29 @@ async def handle_task_zip(request: web.Request) -> web.Response:
                     )
                     r = await client.get(file_url)
                     r.raise_for_status()
-                    fname = file_name or tg_file.file_path.split("/")[-1] or "fayl"
-                    arc_name = f"{folder}/{fname}"
-                    n = 0
-                    while arc_name in used:
-                        n += 1
-                        base, _, ext = fname.rpartition(".")
-                        arc_name = f"{folder}/{base}_{n}.{ext}" if ext else f"{folder}/{fname}_{n}"
-                    used.add(arc_name)
-                    zf.writestr(arc_name, r.content)
+                    fname = _safe_filename(
+                        file_name or (tg_file.file_path or "").split("/")[-1]
+                    )
+                    zf.writestr(_unique_arcname(folder, fname, used), r.content)
                 except Exception as exc:
                     logger.warning("ZIP fayl yuklanmadi %s: %s", file_id, exc)
 
             for s in submissions:
                 if s["file_id"]:
-                    folder = (s["full_name"] or str(s["employee_id"])).replace("/", "_")
+                    folder = _safe_filename(s["full_name"] or str(s["employee_id"]))
                     await _dl(s["file_id"], s["file_name"], folder)
 
             for ef in extra_files:
-                folder = (ef["full_name"] or str(ef["employee_id"])).replace("/", "_")
+                folder = _safe_filename(ef["full_name"] or str(ef["employee_id"]))
                 await _dl(ef["file_id"], ef["file_name"], folder)
 
     buf.seek(0)
-    safe = task["title"][:40].replace("/", "_")
-    resp = _cors(web.Response(
+    safe = _safe_filename(task["title"][:40])
+    return _cors(web.Response(
         body=buf.getvalue(),
         content_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="topshiriq_{task_id}_{safe}.zip"'},
+        headers={"Content-Disposition": _content_disposition(f"topshiriq_{task_id}_{safe}.zip")},
     ))
-    return resp
 
 
 # ── Topshiriq yaratish (rahbar) ────────────────────────────
@@ -371,7 +389,7 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
     """Rahbar uchun yangi topshiriq yaratadi."""
     user, is_mgr = await _auth_full(request)
     if not user:
-        return _json({"error": "Ruxsat yo'q"}, 403)
+        return _json({"error": "Ruxsat yo'q"}, 401)
     if not is_mgr:
         return _json({"error": "Faqat rahbar uchun"}, 403)
 
@@ -402,7 +420,7 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
     try:
         bot = request.app["bot"]
         if config.execution_group_id:
-            dl_text = deadline or "belgilanmagan"
+            dl_text = format_deadline(deadline, config.tz) if deadline else "belgilanmagan"
             text = (
                 f"📋 <b>Yangi topshiriq #{task_id}</b>\n"
                 f"📌 {title}\n"
@@ -422,91 +440,107 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
 async def handle_submit(request: web.Request) -> web.Response:
     user, _ = await _auth_full(request)
     if not user:
-        return _json({"error": "Ruxsat yo'q"}, 403)
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if user["id"] == 0:
+        # Rahbar web sessiyasi (tg_id=0) — topshiriq topshira olmaydi,
+        # aks holda svodkada "#0" nomli soxta ijrochi paydo bo'lar edi.
+        return _json({"error": "Rahbar topshiriq topshira olmaydi"}, 403)
 
-    db: Database    = request.app["db"]
-    config: Config  = request.app["config"]
-    bot             = request.app["bot"]
+    db: Database   = request.app["db"]
+    config: Config = request.app["config"]
+    bot            = request.app["bot"]
+
+    # ── 1. So'rovni o'qish ────────────────────────────────
+    # Fayllar avval xotiraga yig'iladi: multipart'da task_id fayllardan
+    # keyin kelishi mumkin, u holda caption'da "#None" chiqib qolardi.
+    task_id_raw: str | None = None
+    note: str | None        = None
+    pending: list[tuple[str, bytes]] = []
 
     try:
-        reader         = await request.multipart()
-        task_id        = None
-        note           = None
-        uploaded_files: list[tuple[str, str]] = []
+        if (request.content_type or "").startswith("multipart/"):
+            reader = await request.multipart()
+            async for field in reader:
+                if field.name == "task_id":
+                    task_id_raw = (await field.read(decode=True)).decode("utf-8", "ignore")
+                elif field.name == "note":
+                    note = (await field.read(decode=True)).decode("utf-8", "ignore")[:1000]
+                elif field.name in ("file", "files", "files[]"):
+                    data = await field.read()
+                    if data:
+                        pending.append((field.filename or "fayl", data))
+        else:
+            # Faylsiz (faqat izohli) topshirish oddiy forma sifatida ham kelishi mumkin
+            form        = await request.post()
+            task_id_raw = form.get("task_id")
+            raw_note    = form.get("note")
+            note        = str(raw_note)[:1000] if raw_note else None
+    except Exception as exc:
+        logger.warning("Submit so'rovini o'qib bo'lmadi: %s", exc)
+        return _json({"error": "So'rovni o'qib bo'lmadi"}, 400)
 
-        async for field in reader:
-            if field.name == "task_id":
-                task_id = int(await field.read(decode=True))
-            elif field.name == "note":
-                raw  = await field.read(decode=True)
-                note = raw.decode("utf-8", errors="ignore")[:1000]
-            elif field.name in ("file", "files", "files[]"):
-                fn    = field.filename or "fayl"
-                fdata = await field.read()
-                if not fdata:
-                    continue
-                send_chat = config.execution_group_id or (
-                    config.manager_ids[0] if config.manager_ids else None
+    # ── 2. Tekshiruv ──────────────────────────────────────
+    try:
+        task_id = int(task_id_raw)
+    except (TypeError, ValueError):
+        return _json({"error": "task_id noto'g'ri"}, 400)
+
+    task = await db.get_task(task_id)
+    if not task:
+        return _json({"error": "Topshiriq topilmadi"}, 404)
+    if not pending and not (note or "").strip():
+        return _json({"error": "Fayl yoki izoh kerak"}, 400)
+
+    user_id   = user["id"]
+    full_name = (
+        f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or "Xodim"
+    )
+    if not await db.get_employee(user_id):
+        await db.add_employee(user_id, full_name, user.get("username"))
+
+    # ── 3. Fayllarni Telegram'ga yuborish ─────────────────
+    uploaded: list[tuple[str, str]] = []
+    send_chat = config.execution_group_id or (
+        config.manager_ids[0] if config.manager_ids else None
+    )
+    if pending and send_chat:
+        from aiogram.types import BufferedInputFile
+        uname = f"@{user['username']}" if user.get("username") else full_name
+        for idx, (fname, data) in enumerate(pending):
+            caption = (
+                f"📱 <b>Mini App topshiriq</b>\n👤 {uname}\n📋 #{task_id}"
+                if idx == 0 else None
+            )
+            try:
+                sent = await bot.send_document(
+                    send_chat, BufferedInputFile(data, filename=fname), caption=caption
                 )
-                if send_chat:
-                    from aiogram.types import BufferedInputFile
-                    full_name = (
-                        f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
-                        or "Xodim"
-                    )
-                    uname   = f"@{user['username']}" if user.get("username") else full_name
-                    caption = (
-                        f"📱 <b>Mini App topshiriq</b>\n👤 {uname}\n📋 #{task_id}"
-                        if not uploaded_files else None
-                    )
-                    sent = await bot.send_document(
-                        send_chat,
-                        BufferedInputFile(fdata, filename=fn),
-                        caption=caption,
-                    )
-                    if sent and sent.document:
-                        uploaded_files.append((sent.document.file_id, fn))
+            except Exception as exc:
+                logger.error("Fayl Telegram'ga yuborilmadi (%s): %s", fname, exc)
+                return _json({"error": f"Fayl yuborilmadi: {fname}"}, 502)
+            if sent and sent.document:
+                uploaded.append((sent.document.file_id, fname))
 
-        if not task_id:
-            return _json({"error": "task_id kerak"}, 400)
-
-        task = await db.get_task(task_id)
-        if not task:
-            return _json({"error": "Topshiriq topilmadi"}, 404)
-
-        user_id   = user["id"]
-        full_name = (
-            f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or "Xodim"
-        )
-        username = user.get("username")
-
-        if user_id != 0 and not await db.get_employee(user_id):
-            await db.add_employee(user_id, full_name, username)
-
-        primary_fid  = uploaded_files[0][0] if uploaded_files else None
-        primary_name = uploaded_files[0][1] if uploaded_files else None
-
+    # ── 4. Bazaga yozish ──────────────────────────────────
+    try:
         await db.add_submission(
             task_id=task_id, employee_id=user_id, message_id=None,
-            note=note or "Mini App orqali yuborildi",
-            file_id=primary_fid, file_name=primary_name,
+            note=(note or "").strip() or "Mini App orqali yuborildi",
+            file_id=uploaded[0][0] if uploaded else None,
+            file_name=uploaded[0][1] if uploaded else None,
         )
-
-        if len(uploaded_files) > 1:
-            for fid, fname in uploaded_files[1:]:
-                await db.add_submission_file(task_id, user_id, fid, fname)
-
-        submitted = await db.submitted_employee_ids(task_id)
-        total     = await db.count_employees()
-
-        return _json({
-            "ok": True, "done_count": len(submitted),
-            "total_count": total, "files_uploaded": len(uploaded_files),
-        })
-
+        for fid, fname in uploaded[1:]:
+            await db.add_submission_file(task_id, user_id, fid, fname)
     except Exception as exc:
-        logger.error("Mini App submit xatosi: %s", exc, exc_info=True)
-        return _json({"error": str(exc)}, 500)
+        logger.error("Submit bazaga yozilmadi: %s", exc, exc_info=True)
+        return _json({"error": "Ma\'lumotni saqlab bo\'lmadi"}, 500)
+
+    submitted = await db.submitted_employee_ids(task_id)
+    return _json({
+        "ok":          True,
+        "done_count":  len(submitted),
+        "total_count": await db.count_employees(),
+    })
 
 
 # ── Fayl proxy ─────────────────────────────────────────────
@@ -514,7 +548,7 @@ async def handle_submit(request: web.Request) -> web.Response:
 async def handle_file_proxy(request: web.Request) -> web.Response:
     user, _ = await _auth_full(request)
     if not user:
-        return web.Response(status=403)
+        return web.Response(status=401)
 
     file_id = request.match_info.get("file_id", "")
     bot     = request.app["bot"]
@@ -525,14 +559,18 @@ async def handle_file_proxy(request: web.Request) -> web.Response:
         file_url = (
             f"https://api.telegram.org/file/bot{config.bot_token}/{tg_file.file_path}"
         )
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=60) as client:
             r = await client.get(file_url)
             r.raise_for_status()
-        fname = tg_file.file_path.split("/")[-1] if tg_file.file_path else "fayl"
+        # Haqiqiy fayl nomini ?name= dan olamiz, aks holda Telegram nomi ishlatiladi
+        fname = _safe_filename(
+            request.rel_url.query.get("name", "")
+            or (tg_file.file_path.split("/")[-1] if tg_file.file_path else "fayl")
+        )
         ctype = r.headers.get("content-type", "application/octet-stream")
         return _cors(web.Response(
             body=r.content, content_type=ctype,
-            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+            headers={"Content-Disposition": _content_disposition(fname)},
         ))
     except Exception as exc:
         logger.error("Fayl proxy xatosi: %s", exc)
@@ -543,7 +581,9 @@ async def handle_file_proxy(request: web.Request) -> web.Response:
 
 async def handle_employees_list(request: web.Request) -> web.Response:
     user, is_mgr = await _auth_full(request)
-    if not user or not is_mgr:
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if not is_mgr:
         return _json({"error": "Faqat rahbar uchun"}, 403)
     db: Database = request.app["db"]
     emps = await db.list_employees_web()
@@ -563,7 +603,9 @@ async def handle_employees_list(request: web.Request) -> web.Response:
 
 async def handle_employees_add(request: web.Request) -> web.Response:
     user, is_mgr = await _auth_full(request)
-    if not user or not is_mgr:
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if not is_mgr:
         return _json({"error": "Faqat rahbar uchun"}, 403)
     try:
         data = await request.json()
@@ -589,7 +631,9 @@ async def handle_employees_add(request: web.Request) -> web.Response:
 
 async def handle_employees_update(request: web.Request) -> web.Response:
     user, is_mgr = await _auth_full(request)
-    if not user or not is_mgr:
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if not is_mgr:
         return _json({"error": "Faqat rahbar uchun"}, 403)
     tg_id = int(request.match_info.get("tg_id", "0"))
     try:
@@ -614,7 +658,9 @@ async def handle_employees_update(request: web.Request) -> web.Response:
 
 async def handle_employees_delete(request: web.Request) -> web.Response:
     user, is_mgr = await _auth_full(request)
-    if not user or not is_mgr:
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if not is_mgr:
         return _json({"error": "Faqat rahbar uchun"}, 403)
     tg_id = int(request.match_info.get("tg_id", "0"))
     db: Database = request.app["db"]

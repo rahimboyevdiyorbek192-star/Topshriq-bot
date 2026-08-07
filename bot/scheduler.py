@@ -63,10 +63,13 @@ async def _send_reminder(
         for e in not_done:
             if e["username"]:
                 mentions.append(f"@{e['username']}")
-            else:
+            elif e["tg_id"] > 0:
                 mentions.append(
                     f'<a href="tg://user?id={e["tg_id"]}">{e["full_name"]}</a>'
                 )
+            else:
+                # Faqat web orqali qo'shilgan xodim — Telegram havolasi yo'q
+                mentions.append(e["full_name"])
         text = (
             f"{head} — Topshiriq #{task['id']}: {task['title']}\n"
             f"🗓 {format_deadline(task['deadline'], config.tz)} "
@@ -90,6 +93,8 @@ async def _send_reminder(
             "Iltimos, ishingizni tezroq ijro guruhiga tashlang."
         )
         for e in not_done:
+            if e["tg_id"] <= 0:
+                continue        # web xodimning Telegram hisobi yo'q
             try:
                 ok = await userbot.send_message(e["tg_id"], private_text)
                 if ok:
@@ -102,6 +107,14 @@ async def _send_reminder(
                 )
 
 
+async def _cleanup_sessions(db: Database) -> None:
+    """Muddati o'tgan web sessiyalarni tozalaydi (jadval cheksiz o'smasligi uchun)."""
+    try:
+        await db.cleanup_sessions()
+    except Exception as exc:
+        logger.warning("Sessiyalarni tozalash xatosi: %s", exc)
+
+
 def setup_scheduler(
     bot: Bot, db: Database, config: Config, userbot=None
 ) -> AsyncIOScheduler:
@@ -112,6 +125,15 @@ def setup_scheduler(
         minutes=5,
         kwargs={"bot": bot, "db": db, "config": config, "userbot": userbot},
         id="deadline_check",
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        _cleanup_sessions,
+        "interval",
+        hours=12,
+        kwargs={"db": db},
+        id="session_cleanup",
         max_instances=1,
         coalesce=True,
     )

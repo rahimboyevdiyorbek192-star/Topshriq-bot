@@ -229,21 +229,9 @@ class Database:
         )
         return list(await cur.fetchall())
 
-    async def latest_open_task(self) -> Optional[aiosqlite.Row]:
-        cur = await self.conn.execute(
-            "SELECT * FROM tasks WHERE status = 'open' ORDER BY id DESC LIMIT 1"
-        )
-        return await cur.fetchone()
-
     async def close_task(self, task_id: int) -> None:
         await self.conn.execute(
             "UPDATE tasks SET status = 'closed' WHERE id = ?", (task_id,)
-        )
-        await self.conn.commit()
-
-    async def reopen_task(self, task_id: int) -> None:
-        await self.conn.execute(
-            "UPDATE tasks SET status = 'open' WHERE id = ?", (task_id,)
         )
         await self.conn.commit()
 
@@ -312,16 +300,6 @@ class Database:
         )
         return {row["employee_id"] for row in await cur.fetchall()}
 
-    async def employee_stats(self, employee_id: int) -> dict[str, int]:
-        cur = await self.conn.execute(
-            "SELECT COUNT(*) AS c FROM submissions WHERE employee_id = ?",
-            (employee_id,),
-        )
-        done = (await cur.fetchone())["c"]
-        cur = await self.conn.execute("SELECT COUNT(*) AS c FROM tasks")
-        total = (await cur.fetchone())["c"]
-        return {"done": done, "total": total}
-
     async def employee_ranking(self) -> list[aiosqlite.Row]:
         """Xodimlarni bajarilgan topshiriqlar soni bo'yicha tartiblaydi."""
         cur = await self.conn.execute(
@@ -367,14 +345,6 @@ class Database:
             (task_id, employee_id, file_id, file_name, file_kind, datetime.now().isoformat()),
         )
         await self.conn.commit()
-
-    async def get_submission_files(self, task_id: int, employee_id: int) -> list[aiosqlite.Row]:
-        """Xodimning topshiriq uchun yuborgan barcha fayllarini qaytaradi."""
-        cur = await self.conn.execute(
-            "SELECT * FROM submission_files WHERE task_id=? AND employee_id=? ORDER BY id",
-            (task_id, employee_id),
-        )
-        return list(await cur.fetchall())
 
     async def get_submission(self, task_id: int, employee_id: int) -> Optional[aiosqlite.Row]:
         cur = await self.conn.execute(

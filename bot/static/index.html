@@ -6,22 +6,14 @@
 <title>Xonqa Yoshlar Agentligi</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-/* ── Variables ───────────────────────────────────────────── */
+/* ── Ranglar ─────────────────────────────────────────────── */
 :root {
-  --bg:          #f0f2f5;
-  --surface:     #ffffff;
-  --border:      #e5e7eb;
-  --text:        #111827;
-  --hint:        #6b7280;
-  --primary:     #2678b6;
-  --primary-lt:  #e8f1f9;
-  --success:     #16a34a;
-  --warning:     #d97706;
-  --danger:      #dc2626;
-  --success-bg:  #dcfce7;
-  --warning-bg:  #fef3c7;
-  --danger-bg:   #fee2e2;
-  --sidebar-w:   240px;
+  --bg:#f0f2f5; --surface:#fff; --border:#e5e7eb;
+  --text:#111827; --hint:#6b7280;
+  --primary:#2678b6; --primary-lt:#e8f1f9;
+  --success:#16a34a; --warning:#d97706; --danger:#dc2626;
+  --success-bg:#dcfce7; --warning-bg:#fef3c7; --danger-bg:#fee2e2;
+  --nav-h:60px;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -36,33 +28,33 @@
   --success-bg:#0f2e1a; --warning-bg:#2e1f00; --danger-bg:#2e0e0e;
 }
 
-/* ── Reset ───────────────────────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5}
 button,input,select,textarea{font-family:inherit}
-a{color:var(--primary);text-decoration:none}
 
-/* ── App shell ───────────────────────────────────────────── */
+/* ── Karkas ──────────────────────────────────────────────── */
 #root{min-height:100dvh}
-#app{min-height:100dvh;display:flex;flex-direction:row}
+#app{min-height:100dvh;display:flex}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-x:hidden}
+#page-content{flex:1;display:flex;flex-direction:column}
 
-/* ── Sidebar ─────────────────────────────────────────────── */
+/* ── Yon panel (kompyuter) ───────────────────────────────── */
 .sidebar{
-  width:var(--sidebar-w);min-height:100dvh;background:var(--surface);
-  border-right:1px solid var(--border);display:flex;flex-direction:column;
-  position:sticky;top:0;height:100dvh;overflow-y:auto;flex-shrink:0;
+  width:240px;background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;position:sticky;top:0;
+  height:100dvh;overflow-y:auto;flex-shrink:0;
 }
 .sb-logo{padding:18px 16px 12px;border-bottom:1px solid var(--border)}
 .sb-logo-icon{font-size:28px;line-height:1;margin-bottom:6px}
-.sb-logo-name{font-size:13px;font-weight:700;color:var(--text);line-height:1.3}
+.sb-logo-name{font-size:13px;font-weight:700;line-height:1.3}
 .sb-logo-sub{font-size:11px;color:var(--hint);margin-top:2px}
 .sb-user{padding:10px 16px;border-bottom:1px solid var(--border)}
 .sb-user-name{font-size:13px;font-weight:600}
 .sb-user-role{font-size:11px;color:var(--hint);margin-top:2px}
 .sb-nav{flex:1;padding:6px 0}
 .nav-item{
-  display:flex;align-items:center;gap:10px;padding:10px 16px;
-  cursor:pointer;border:none;background:none;width:100%;text-align:left;
+  display:flex;align-items:center;gap:10px;padding:10px 16px;width:100%;
+  cursor:pointer;border:none;background:none;text-align:left;
   font-size:14px;color:var(--text);transition:background .12s;
 }
 .nav-item:hover{background:var(--bg)}
@@ -70,15 +62,12 @@ a{color:var(--primary);text-decoration:none}
 .nav-icon{font-size:17px;line-height:1;flex-shrink:0}
 .sb-footer{padding:12px 16px;border-top:1px solid var(--border)}
 .btn-logout{
-  display:flex;align-items:center;gap:8px;font-size:13px;
-  color:var(--hint);cursor:pointer;background:none;border:none;padding:6px 0;width:100%;
+  display:flex;align-items:center;gap:8px;width:100%;padding:6px 0;
+  font-size:13px;color:var(--hint);cursor:pointer;background:none;border:none;
 }
 .btn-logout:hover{color:var(--danger)}
 
-/* ── Main area ───────────────────────────────────────────── */
-.main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-x:hidden}
-
-/* ── Mobile header ───────────────────────────────────────── */
+/* ── Mobil sarlavha va pastki menyu ──────────────────────── */
 .mobile-header{
   position:sticky;top:0;z-index:100;background:var(--surface);
   border-bottom:1px solid var(--border);padding:10px 14px;
@@ -87,11 +76,9 @@ a{color:var(--primary);text-decoration:none}
 .mh-title{flex:1;min-width:0}
 .mh-title h1{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mh-title p{font-size:12px;color:var(--hint);margin-top:1px}
-
-/* ── Bottom nav ──────────────────────────────────────────── */
 .bottom-nav{
-  position:fixed;bottom:0;left:0;right:0;background:var(--surface);
-  border-top:1px solid var(--border);display:flex;z-index:100;
+  position:fixed;bottom:0;left:0;right:0;z-index:100;display:flex;
+  background:var(--surface);border-top:1px solid var(--border);
   padding-bottom:env(safe-area-inset-bottom);
 }
 .bnav-item{
@@ -102,36 +89,30 @@ a{color:var(--primary);text-decoration:none}
 .bnav-item.active{color:var(--primary)}
 .bnav-icon{font-size:22px;line-height:1}
 
-/* ── Desktop: hide mobile chrome ─────────────────────────── */
 @media(min-width:768px){
-  .mobile-header{display:none}
-  .bottom-nav{display:none}
-  #page-content{overflow-y:auto;height:calc(100dvh)}
+  .mobile-header,.bottom-nav{display:none}
+  #page-content{overflow-y:auto;height:100dvh}
 }
 @media(max-width:767px){
   .sidebar{display:none}
+  /* Pastki menyu tagida qolib ketmasligi uchun bo'sh joy */
+  .pad-nav{padding-bottom:calc(var(--nav-h) + 14px + env(safe-area-inset-bottom))}
 }
 
-/* ── Page content ────────────────────────────────────────── */
-#page-content{flex:1;display:flex;flex-direction:column}
-
-/* ── Buttons ─────────────────────────────────────────────── */
+/* ── Tugmalar ────────────────────────────────────────────── */
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:6px;
   padding:9px 16px;border-radius:8px;font-size:14px;font-weight:600;
-  cursor:pointer;border:none;transition:opacity .15s,background .15s;white-space:nowrap;
+  cursor:pointer;border:none;white-space:nowrap;transition:opacity .15s;
 }
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn:not(:disabled):active{opacity:.8}
 .btn-primary{background:var(--primary);color:#fff}
-.btn-success{background:var(--success);color:#fff}
-.btn-danger{background:var(--danger);color:#fff}
-.btn-outline{background:transparent;color:var(--primary);border:1.5px solid var(--primary)}
 .btn-ghost{background:var(--bg);color:var(--text);border:1px solid var(--border)}
 .btn-sm{padding:6px 12px;font-size:13px}
 .btn-full{width:100%}
 
-/* ── Badges ──────────────────────────────────────────────── */
+/* ── Nishonlar ───────────────────────────────────────────── */
 .badge{
   display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;
   padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0;
@@ -140,7 +121,7 @@ a{color:var(--primary);text-decoration:none}
 .badge-wait{background:var(--warning-bg);color:var(--warning)}
 .badge-over{background:var(--danger-bg);color:var(--danger)}
 
-/* ── Task list ───────────────────────────────────────────── */
+/* ── Topshiriqlar ro'yxati ───────────────────────────────── */
 .tasks-container{padding:14px;display:flex;flex-direction:column;gap:10px}
 @media(min-width:900px){
   .tasks-container{
@@ -165,37 +146,23 @@ a{color:var(--primary);text-decoration:none}
 .pg-green{background:#22c55e}.pg-yellow{background:#f59e0b}.pg-red{background:#ef4444}
 .prog-text{font-size:11px;color:var(--hint);margin-top:4px}
 
-/* ── Detail / shared ─────────────────────────────────────── */
-.detail-body{
-  flex:1;padding:14px 14px 90px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;
-}
+/* ── Batafsil ────────────────────────────────────────────── */
+.detail-body{flex:1;padding:14px;display:flex;flex-direction:column;gap:14px;overflow-y:auto}
 @media(min-width:768px){.detail-body{padding:20px 24px 40px;max-width:860px}}
 .sec-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px}
 .sec-title{
   font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
   color:var(--hint);margin-bottom:10px;
 }
+.task-name{font-size:16px;font-weight:700;margin-bottom:8px}
+.task-desc{font-size:14px;line-height:1.6;white-space:pre-wrap;color:var(--hint)}
 
-/* ── Stats (manager detail) ──────────────────────────────── */
-.stats-row{display:flex;gap:10px;flex-wrap:wrap}
-.stat-box{
-  flex:1;min-width:72px;text-align:center;padding:12px 8px;
-  background:var(--bg);border-radius:10px;
-}
-.stat-num{font-size:26px;font-weight:800;line-height:1;color:var(--primary)}
-.stat-lbl{font-size:11px;color:var(--hint);margin-top:4px}
-
-/* Donut */
+/* ── Svodka ──────────────────────────────────────────────── */
 .donut-wrap{display:flex;align-items:center;gap:16px;margin-top:8px;flex-wrap:wrap}
 .donut-legend{display:flex;flex-direction:column;gap:6px}
 .legend-item{display:flex;align-items:center;gap:8px;font-size:13px}
 .legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-
-/* Submission list */
-.sub-item{
-  display:flex;align-items:center;gap:10px;padding:10px 0;
-  border-bottom:1px solid var(--border);
-}
+.sub-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
 .sub-item:last-child{border-bottom:none;padding-bottom:0}
 .sub-avatar{
   width:32px;height:32px;border-radius:50%;background:var(--primary-lt);
@@ -205,17 +172,16 @@ a{color:var(--primary);text-decoration:none}
 .sub-info{flex:1;min-width:0}
 .sub-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sub-time{font-size:11px;color:var(--hint);margin-top:2px}
-
-/* ZIP button */
 .zip-btn{
   display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
-  padding:12px;border-radius:10px;background:linear-gradient(135deg,#2678b6,#1e5a9c);
-  color:#fff;font-size:15px;font-weight:600;cursor:pointer;border:none;transition:opacity .15s;
+  padding:12px;border-radius:10px;border:none;cursor:pointer;
+  background:linear-gradient(135deg,#2678b6,#1e5a9c);
+  color:#fff;font-size:15px;font-weight:600;transition:opacity .15s;
 }
 .zip-btn:hover{opacity:.9}
 .zip-btn:active{opacity:.75}
 
-/* ── File items ──────────────────────────────────────────── */
+/* ── Fayllar ─────────────────────────────────────────────── */
 .file-item{
   display:flex;align-items:center;gap:10px;padding:9px 12px;
   background:var(--bg);border-radius:8px;margin-bottom:6px;
@@ -228,13 +194,14 @@ a{color:var(--primary);text-decoration:none}
 .fi-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fi-type{font-size:11px;color:var(--hint);margin-top:1px}
 
-/* ── Upload ──────────────────────────────────────────────── */
+/* ── Yuklash ─────────────────────────────────────────────── */
 .upload-area{
   border:2px dashed var(--border);border-radius:12px;padding:24px 16px;
-  text-align:center;cursor:pointer;transition:border-color .2s,background .2s;position:relative;
+  text-align:center;cursor:pointer;position:relative;
+  transition:border-color .2s,background .2s;
 }
 .upload-area:hover,.upload-area.has-files{border-color:var(--primary);background:var(--primary-lt)}
-.upload-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-area input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 .upload-icon{font-size:30px;display:block;margin-bottom:6px}
 .upload-lbl{font-size:14px;font-weight:500;color:var(--primary)}
 .upload-hint{font-size:12px;color:var(--hint);margin-top:4px}
@@ -245,81 +212,80 @@ a{color:var(--primary);text-decoration:none}
 .sf-del{background:none;border:none;color:var(--hint);cursor:pointer;font-size:16px;padding:0 2px;line-height:1}
 .sf-del:hover{color:var(--danger)}
 .note-area{
-  width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;
-  background:var(--bg);color:var(--text);font-size:14px;font-family:inherit;
-  resize:vertical;min-height:76px;outline:none;transition:border-color .15s;margin-top:8px;
+  width:100%;margin-top:8px;padding:10px 12px;min-height:76px;resize:vertical;
+  border:1.5px solid var(--border);border-radius:8px;
+  background:var(--bg);color:var(--text);font-size:14px;outline:none;
+  transition:border-color .15s;
 }
 .note-area:focus{border-color:var(--primary)}
 .submitted-banner{
-  display:flex;align-items:center;gap:10px;padding:12px 14px;
-  background:var(--success-bg);border-radius:10px;border:1px solid #86efac;margin-bottom:8px;
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:12px 14px;
+  background:var(--success-bg);border:1px solid #86efac;border-radius:10px;
 }
 .sb-icon{font-size:22px}
 .sb-lbl{font-size:13px;font-weight:600;color:var(--success)}
 .sb-sub{font-size:12px;color:var(--success);opacity:.8;margin-top:2px}
 .resubmit-note{font-size:12px;color:var(--hint);margin-bottom:8px}
-
-/* ── Fixed bottom ────────────────────────────────────────── */
-.fixed-bottom{
-  position:sticky;bottom:0;background:var(--surface);
-  border-top:1px solid var(--border);
-  padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+.submit-bar{
+  position:sticky;bottom:0;z-index:101;background:var(--surface);
+  border-top:1px solid var(--border);padding:12px 0;
 }
-@media(min-width:768px){.fixed-bottom{position:static;border-top:none;padding:16px 0 0}}
+@media(max-width:767px){
+  .submit-bar{bottom:calc(var(--nav-h) + env(safe-area-inset-bottom));padding:12px 14px;margin:0 -14px}
+}
+@media(min-width:768px){.submit-bar{position:static;border-top:none;padding:16px 0 0}}
 
-/* ── Forms ───────────────────────────────────────────────── */
+/* ── Formalar ────────────────────────────────────────────── */
 .form-group{margin-bottom:14px}
 .form-label{
-  display:block;font-size:12px;font-weight:700;color:var(--hint);
-  text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;
+  display:block;margin-bottom:5px;font-size:12px;font-weight:700;
+  color:var(--hint);text-transform:uppercase;letter-spacing:.4px;
 }
 .form-input{
   width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;
-  background:var(--bg);color:var(--text);font-size:14px;font-family:inherit;
-  outline:none;transition:border-color .15s;
+  background:var(--bg);color:var(--text);font-size:14px;outline:none;
+  transition:border-color .15s;
 }
 .form-input:focus{border-color:var(--primary)}
 textarea.form-input{resize:vertical;min-height:90px}
 .form-hint{font-size:12px;color:var(--hint);margin-top:4px}
-.form-error{color:var(--danger);font-size:13px;margin-bottom:10px;display:none}
+.form-error{
+  display:none;margin-bottom:12px;padding:10px 12px;border-radius:8px;
+  background:var(--danger-bg);color:var(--danger);font-size:13px;
+}
+.form-error.show{display:block}
 .pw-wrap{position:relative}
 .pw-wrap .form-input{padding-right:42px}
 .pw-eye{
   position:absolute;right:12px;top:50%;transform:translateY(-50%);
-  background:none;border:none;cursor:pointer;color:var(--hint);font-size:18px;padding:0;line-height:1;
+  background:none;border:none;cursor:pointer;color:var(--hint);
+  font-size:18px;padding:0;line-height:1;
 }
 .pw-eye:hover{color:var(--text)}
-.pw-bar{height:4px;border-radius:2px;background:var(--border);margin-top:6px;overflow:hidden}
-.pw-fill{height:100%;border-radius:2px;transition:width .3s,background .3s;width:0}
+.pw-bar{height:4px;margin-top:6px;border-radius:2px;background:var(--border);overflow:hidden}
+.pw-fill{height:100%;width:0;border-radius:2px;transition:width .3s,background .3s}
 .pw-text{font-size:11px;margin-top:3px}
 
-/* ── Login ───────────────────────────────────────────────── */
-.login-wrap{
-  min-height:100dvh;display:flex;align-items:center;justify-content:center;
-  padding:20px;background:var(--bg);
-}
+/* ── Kirish sahifasi ─────────────────────────────────────── */
+.login-wrap{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:20px}
 .login-card{
+  width:100%;max-width:400px;padding:32px 28px;
   background:var(--surface);border:1px solid var(--border);border-radius:16px;
-  padding:32px 28px;width:100%;max-width:400px;
 }
 .login-logo{text-align:center;margin-bottom:24px}
 .ll-icon{font-size:48px;display:block;margin-bottom:8px}
 .ll-title{font-size:18px;font-weight:700}
 .ll-sub{font-size:13px;color:var(--hint);margin-top:4px}
-.login-err{
-  background:var(--danger-bg);color:var(--danger);border-radius:8px;
-  padding:10px 12px;font-size:13px;margin-bottom:14px;display:none;
-}
-.login-err.show{display:block}
 .remember-row{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:14px}
 .remember-row input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary)}
 
-/* ── Employees table ─────────────────────────────────────── */
+/* ── Xodimlar jadvali ────────────────────────────────────── */
 .table-wrap{overflow-x:auto}
 .emp-table{width:100%;border-collapse:collapse}
 .emp-table th{
-  text-align:left;padding:9px 12px;font-size:11px;font-weight:700;
-  text-transform:uppercase;letter-spacing:.4px;color:var(--hint);border-bottom:1px solid var(--border);
+  padding:9px 12px;text-align:left;font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.4px;color:var(--hint);
+  border-bottom:1px solid var(--border);
 }
 .emp-table td{padding:11px 12px;border-bottom:1px solid var(--border);font-size:14px}
 .emp-table tr:last-child td{border-bottom:none}
@@ -329,49 +295,45 @@ textarea.form-input{resize:vertical;min-height:90px}
 
 /* ── Modal ───────────────────────────────────────────────── */
 .modal-overlay{
-  position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;
+  position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);
   display:flex;align-items:flex-end;justify-content:center;
 }
 @media(min-width:640px){.modal-overlay{align-items:center}}
 .modal{
-  background:var(--surface);border-radius:16px 16px 0 0;width:100%;
-  max-height:92dvh;overflow-y:auto;
-  padding:20px 20px calc(20px + env(safe-area-inset-bottom));
+  width:100%;max-height:92dvh;overflow-y:auto;background:var(--surface);
+  border-radius:16px 16px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));
 }
-@media(min-width:640px){
-  .modal{border-radius:16px;max-width:480px;padding:24px;max-height:88dvh}
-}
+@media(min-width:640px){.modal{max-width:480px;border-radius:16px;padding:24px;max-height:88dvh}}
 .modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .modal-title{font-size:17px;font-weight:700}
-.modal-close{
-  background:none;border:none;color:var(--hint);font-size:22px;cursor:pointer;padding:0 4px;line-height:1;
-}
+.modal-close{background:none;border:none;color:var(--hint);font-size:22px;cursor:pointer;padding:0 4px;line-height:1}
 .modal-close:hover{color:var(--text)}
 
-/* ── Misc ────────────────────────────────────────────────── */
+/* ── Holatlar ────────────────────────────────────────────── */
 .center-box{
-  flex:1;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:12px;padding:40px 20px;text-align:center;
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;padding:40px 20px;text-align:center;
 }
 .center-box .icon{font-size:48px}
-.center-box p{color:var(--hint);font-size:14px;max-width:260px;line-height:1.5}
+.center-box p{color:var(--hint);font-size:14px;max-width:280px;line-height:1.5}
 .spinner{
-  width:34px;height:34px;border:3px solid var(--border);
-  border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;
+  width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--primary);
+  border-radius:50%;animation:spin .8s linear infinite;
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 .overlay{
-  position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;
-  flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:999;
+  position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.55);
+  display:flex;align-items:center;justify-content:center;
 }
 .overlay-box{
-  background:var(--surface);border-radius:16px;padding:28px 32px;
   display:flex;flex-direction:column;align-items:center;gap:14px;min-width:200px;
+  background:var(--surface);border-radius:16px;padding:28px 32px;
 }
 .overlay-text{font-size:14px;font-weight:500}
 .success-overlay{
-  position:fixed;inset:0;background:var(--surface);display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:12px;z-index:998;animation:fadeIn .3s;
+  position:fixed;inset:0;z-index:998;background:var(--surface);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;animation:fadeIn .3s;
 }
 @keyframes fadeIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
 .success-icon{font-size:72px;animation:popIn .4s .1s both}
@@ -379,9 +341,9 @@ textarea.form-input{resize:vertical;min-height:90px}
 .success-title{font-size:20px;font-weight:700}
 .success-sub{font-size:14px;color:var(--hint);text-align:center;max-width:240px;line-height:1.5}
 .toast{
-  position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
-  background:#1a1a2e;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;
-  z-index:500;white-space:nowrap;pointer-events:none;
+  position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:500;
+  padding:10px 18px;border-radius:8px;background:#1a1a2e;color:#fff;
+  font-size:13px;white-space:nowrap;pointer-events:none;
   animation:toastIn .2s,toastOut .3s 2.5s forwards;
 }
 @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
@@ -389,10 +351,9 @@ textarea.form-input{resize:vertical;min-height:90px}
 .dl-red{color:var(--danger);font-weight:600}
 .dl-yellow{color:var(--warning);font-weight:600}
 .dl-green{color:var(--success);font-weight:600}
-.mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}
-.flex{display:flex}.gap-8{gap:8px}.gap-10{gap:10px}
-.flex-1{flex:1}.items-center{align-items:center}
-.justify-between{justify-content:space-between}.flex-wrap{flex-wrap:wrap}
+.flex{display:flex}.gap-8{gap:8px}.flex-wrap{flex-wrap:wrap}
+.items-center{align-items:center}.justify-between{justify-content:space-between}
+.mt-8{margin-top:8px}.mt-12{margin-top:12px}
 .text-hint{color:var(--hint)}.text-sm{font-size:13px}
 </style>
 </head>
@@ -402,205 +363,258 @@ textarea.form-input{resize:vertical;min-height:90px}
 <script>
 'use strict';
 
-/* ── Telegram WebApp ──────────────────────────────────────── */
-const tg = window.Telegram?.WebApp;
-const TG_INIT = tg?.initData || '';
+/* ════════════════════════════════════════════════════════════
+   Telegram WebApp
+   ════════════════════════════════════════════════════════════ */
+const tg      = window.Telegram && window.Telegram.WebApp;
+const TG_INIT = (tg && tg.initData) || '';
 const IS_TG   = !!TG_INIT;
 if (tg) { tg.ready(); tg.expand(); }
 
-/* ── Storage ─────────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════
+   Sessiya saqlash
+   ════════════════════════════════════════════════════════════ */
 const Store = {
   getToken() { return localStorage.getItem('tq_tok') || sessionStorage.getItem('tq_tok') || ''; },
-  setToken(v, rem) {
-    if (rem) { localStorage.setItem('tq_tok', v); sessionStorage.removeItem('tq_tok'); }
-    else     { sessionStorage.setItem('tq_tok', v); localStorage.removeItem('tq_tok'); }
+  setToken(v, remember) {
+    if (remember) { localStorage.setItem('tq_tok', v); sessionStorage.removeItem('tq_tok'); }
+    else          { sessionStorage.setItem('tq_tok', v); localStorage.removeItem('tq_tok'); }
   },
   clear() { localStorage.removeItem('tq_tok'); sessionStorage.removeItem('tq_tok'); },
 };
 
-/* ── State ───────────────────────────────────────────────── */
-const S = {
-  page:       'loading',
-  isManager:  false,
-  user:       null,
-  tasks:      [],
-  activeTask: null,
-  detail:     null,    // manager task detail (submissions svodka)
-  employees:  [],
-  selFiles:   [],
-  note:       '',
-};
+/* ════════════════════════════════════════════════════════════
+   Holat
+   ════════════════════════════════════════════════════════════ */
+const MAX_UPLOAD = 50 * 1024 * 1024;   // server chegarasi bilan bir xil
 
-/* ── API ─────────────────────────────────────────────────── */
-async function api(path, opts = {}) {
-  const tok = Store.getToken();
-  const isForm = opts.body instanceof FormData;
-  const headers = {
-    ...(isForm ? {} : {'Content-Type':'application/json'}),
-    ...(TG_INIT ? {'X-Telegram-Init-Data': TG_INIT} : {}),
-    ...(tok ? {'X-Session-Token': tok} : {}),
-    ...(opts.headers || {}),
+function freshState() {
+  return {
+    page:'loading', isManager:false, user:null,
+    tasks:[], activeTask:null, detail:null, employees:[],
+    selFiles:[], note:'',
   };
-  if (opts.body && !isForm && typeof opts.body === 'object') opts.body = JSON.stringify(opts.body);
-  const res = await fetch(path, {...opts, headers});
-  if (res.status === 401 && !IS_TG) { Store.clear(); render({page:'login'}); return null; }
-  const ct = res.headers.get('content-type') || '';
-  return ct.includes('json') ? res.json() : res;
+}
+let S = freshState();
+
+/* ════════════════════════════════════════════════════════════
+   Yordamchilar
+   ════════════════════════════════════════════════════════════ */
+/* HTML matn va atribut konteksti uchun. Apostrof ham qochiriladi —
+   o'zbek ismlarida ("O'ktam", "Sa'dulla") u juda ko'p uchraydi.  */
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-/* ── Utilities ───────────────────────────────────────────── */
-function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
 function fileIcon(name, kind) {
-  if (!name && kind==='photo') return '🖼️';
-  const ext = (name||'').split('.').pop().toLowerCase();
-  const m = {xlsx:'📊',xls:'📊',docx:'📄',doc:'📄',pptx:'📑',ppt:'📑',pdf:'📋',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',zip:'🗜️',rar:'🗜️',txt:'📝',mp4:'🎬',mp3:'🎵'};
-  return m[ext] || (kind==='photo'?'🖼️':'📎');
+  if (!name && kind === 'photo') return '🖼️';
+  const ext = String(name || '').split('.').pop().toLowerCase();
+  const map = {xlsx:'📊',xls:'📊',docx:'📄',doc:'📄',pptx:'📑',ppt:'📑',pdf:'📋',
+               jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',zip:'🗜️',rar:'🗜️',
+               txt:'📝',mp4:'🎬',mp3:'🎵'};
+  return map[ext] || (kind === 'photo' ? '🖼️' : '📎');
+}
+
+function fileExt(name) {
+  const ext = String(name || '').split('.').pop();
+  return (ext && ext !== name) ? ext.toUpperCase() : 'Fayl';
 }
 
 function fsize(b) {
   if (!b) return '';
-  if (b<1024) return b+' B';
-  if (b<1048576) return (b/1024).toFixed(1)+' KB';
-  return (b/1048576).toFixed(1)+' MB';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
 }
 
 function fmtDate(iso) {
   if (!iso) return '';
-  try { return new Date(iso).toLocaleString('uz-UZ',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
-  catch { return iso.slice(0,16).replace('T',' '); }
+  const d = new Date(iso);
+  if (isNaN(d)) return String(iso).slice(0, 16).replace('T', ' ');
+  return d.toLocaleString('uz-UZ', {day:'2-digit',month:'2-digit',year:'numeric',
+                                    hour:'2-digit',minute:'2-digit'});
 }
 
-function deadlineFmt(iso) {
-  if (!iso) return {text:'Muddat belgilanmagan',cls:''};
-  const d=new Date(iso),now=new Date(),diff=d-now,abs=Math.abs(diff);
-  const days=Math.floor(abs/86400000),hrs=Math.floor((abs%86400000)/3600000),mins=Math.floor((abs%3600000)/60000);
-  const ds=d.toLocaleDateString('uz-UZ',{day:'numeric',month:'long'})+' '+d.toLocaleTimeString('uz-UZ',{hour:'2-digit',minute:'2-digit'});
-  if (diff<0) return {text:`${ds} — muddat o'tdi`,cls:'dl-red'};
-  if (days>1) return {text:`${ds} · ${days} kun`,cls:'dl-green'};
-  if (days===1) return {text:`${ds} · 1 kun ${hrs} soat`,cls:'dl-yellow'};
-  return {text:`${ds} · ${hrs} soat ${mins} daqiqa`,cls:'dl-yellow'};
+/* Muddatni tuzilgan holda qaytaradi, matnni kesib olishga hojat qolmaydi */
+function deadlineInfo(iso) {
+  if (!iso) return {date:'Muddat belgilanmagan', rel:'', cls:''};
+  const d = new Date(iso);
+  if (isNaN(d)) return {date:String(iso), rel:'', cls:''};
+  const diff = d - new Date(), abs = Math.abs(diff);
+  const days = Math.floor(abs/86400000);
+  const hrs  = Math.floor((abs%86400000)/3600000);
+  const mins = Math.floor((abs%3600000)/60000);
+  const date = d.toLocaleDateString('uz-UZ',{day:'numeric',month:'long'}) + ' ' +
+               d.toLocaleTimeString('uz-UZ',{hour:'2-digit',minute:'2-digit'});
+  if (diff < 0)   return {date, rel:"muddat o'tdi",           cls:'dl-red'};
+  if (days > 1)   return {date, rel:`${days} kun qoldi`,       cls:'dl-green'};
+  if (days === 1) return {date, rel:`1 kun ${hrs} soat qoldi`, cls:'dl-yellow'};
+  return {date, rel:`${hrs} soat ${mins} daqiqa qoldi`, cls:'dl-yellow'};
 }
+const deadlineText = i => { const d = deadlineInfo(i); return d.rel ? `${d.date} · ${d.rel}` : d.date; };
 
-function pgCls(pct){ return pct>=80?'pg-green':pct>=40?'pg-yellow':'pg-red'; }
-function initials(n){ return (n||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
+const pgCls    = p => p >= 80 ? 'pg-green' : p >= 40 ? 'pg-yellow' : 'pg-red';
+const initials = n => String(n || '?').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+const pct      = (d,t) => t > 0 ? Math.round(d/t*100) : 0;
+
+/* datetime-local maydoni uchun MAHALLIY vaqt (toISOString UTC beradi — xato) */
+function localInputValue(d) {
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+/* "2026-08-08T18:00" → "2026-08-08T18:00:00+05:00" (mahalliy vaqt zonasi bilan) */
+function localToIso(v) {
+  const off = -new Date(v).getTimezoneOffset();
+  const p = n => String(Math.floor(Math.abs(n))).padStart(2,'0');
+  return `${v}:00${off >= 0 ? '+' : '-'}${p(off/60)}:${p(off%60)}`;
+}
 
 function toast(msg) {
-  const el=document.createElement('div');
-  el.className='toast';el.textContent=msg;
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
   document.body.appendChild(el);
-  setTimeout(()=>el.remove(),3100);
+  setTimeout(() => el.remove(), 3100);
 }
 
 function showAlert(msg) {
-  if (IS_TG && tg.showAlert) tg.showAlert(msg);
-  else alert(msg);
+  if (IS_TG && tg.showAlert) tg.showAlert(msg); else alert(msg);
 }
 
-/* ── Render engine ───────────────────────────────────────── */
-function render(patch={}) {
-  Object.assign(S, patch);
+/* Telegram WebView'da native confirm() ishlamaydi */
+function showConfirm(msg) {
+  return new Promise(res => {
+    if (IS_TG && tg.showConfirm) tg.showConfirm(msg, ok => res(!!ok));
+    else res(window.confirm(msg));
+  });
+}
+
+/* Telegram WebView window.open() ni bloklaydi */
+function openUrl(url) {
+  if (IS_TG && tg.openLink) tg.openLink(url);
+  else window.open(url, '_blank');
+}
+
+function formError(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (msg) { el.textContent = msg; el.classList.add('show'); }
+  else el.classList.remove('show');
+}
+
+/* ════════════════════════════════════════════════════════════
+   API
+   ════════════════════════════════════════════════════════════ */
+function authHeaders() {
+  const h = {};
+  if (TG_INIT) h['X-Telegram-Init-Data'] = TG_INIT;
+  const t = Store.getToken();
+  if (t) h['X-Session-Token'] = t;
+  return h;
+}
+
+function authQuery() {
+  return TG_INIT ? 'init=' + encodeURIComponent(TG_INIT)
+                 : 'token=' + encodeURIComponent(Store.getToken());
+}
+
+async function api(path, opts) {
+  opts = opts || {};
+  const isForm  = opts.body instanceof FormData;
+  const headers = Object.assign(
+    isForm ? {} : {'Content-Type':'application/json'},
+    authHeaders(), opts.headers || {}
+  );
+  const body = (opts.body && !isForm && typeof opts.body === 'object')
+    ? JSON.stringify(opts.body) : opts.body;
+
+  const res = await fetch(path, Object.assign({}, opts, {headers, body}));
+
+  /* 401 = sessiya tugagan → chiqarib yuboramiz.
+     403 = ruxsat yo'q (masalan xodim rahbar sahifasini so'radi) → xato matni. */
+  if (res.status === 401 && !IS_TG) { forceLogout(); return null; }
+  if (res.status === 413) return {error:"Fayl juda katta (maksimum 50 MB)"};
+
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('json')) return {error:`Server xatosi (${res.status})`};
+  return res.json();
+}
+
+function forceLogout() {
+  Store.clear();
+  S = freshState();
+  render({page:'login'});
+}
+
+/* ════════════════════════════════════════════════════════════
+   Render
+   ════════════════════════════════════════════════════════════ */
+function render(patch) {
+  Object.assign(S, patch || {});
   const root = document.getElementById('root');
 
-  if (S.page==='loading') {
-    root.innerHTML=`<div class="center-box" style="min-height:100dvh"><div class="spinner"></div></div>`;
+  if (S.page === 'loading') {
+    root.innerHTML = '<div class="center-box" style="min-height:100dvh"><div class="spinner"></div></div>';
     return;
   }
-  if (S.page==='login') {
-    root.innerHTML=renderLogin();
-    afterLogin();
-    return;
-  }
-  root.innerHTML=renderShell();
-  afterShell();
+  if (S.page === 'login') { root.innerHTML = loginPage(); focusLogin(); return; }
+
+  root.innerHTML = shell();
+  syncBackButton();
   updatePage();
 }
 
-/* ── Login ───────────────────────────────────────────────── */
-function renderLogin() {
-  return `
-  <div class="login-wrap">
-    <div class="login-card">
-      <div class="login-logo">
-        <span class="ll-icon">🏛️</span>
-        <div class="ll-title">Xonqa Yoshlar Agentligi</div>
-        <div class="ll-sub">Topshiriqlar tizimi — kirish</div>
-      </div>
-      <div class="login-err" id="lerr"></div>
-      <div class="form-group">
-        <label class="form-label" for="lphone">Telefon raqam</label>
-        <input class="form-input" type="tel" id="lphone" placeholder="+998 90 123 45 67" autocomplete="username">
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="lpw">Parol</label>
-        <div class="pw-wrap">
-          <input class="form-input" type="password" id="lpw" placeholder="Parolingiz" autocomplete="current-password">
-          <button class="pw-eye" type="button" onclick="togglePw('lpw',this)">👁️</button>
-        </div>
-      </div>
-      <div class="remember-row">
-        <input type="checkbox" id="remember">
-        <label for="remember">Eslab qolish (7 kun)</label>
-      </div>
-      <button class="btn btn-primary btn-full" id="lbtn" onclick="doLogin()">Kirish</button>
-    </div>
-  </div>`;
+function updatePage() {
+  const pc = document.getElementById('page-content');
+  if (!pc) return;
+
+  const titles = {
+    'tasks':       'Topshiriqlar',
+    'task-detail': S.activeTask ? `#${S.activeTask.id} ${S.activeTask.title}` : 'Topshiriq',
+    'create-task': "Topshiriq qo'shish",
+    'employees':   'Xodimlar',
+  };
+  const mh = document.getElementById('mh-t');
+  if (mh) mh.textContent = titles[S.page] || 'Topshiriqlar';
+
+  if (S.page === 'tasks')            pc.innerHTML = taskListPage();
+  else if (S.page === 'task-detail') pc.innerHTML = S.isManager ? mgrDetailPage() : empDetailPage();
+  else if (S.page === 'create-task') { pc.innerHTML = createTaskPage(); initDeadlineField(); }
+  else if (S.page === 'employees')   pc.innerHTML = employeesPage();
 }
 
-function afterLogin() {
-  const ph=document.getElementById('lphone'),pw=document.getElementById('lpw');
-  if(ph) ph.addEventListener('keydown',e=>{if(e.key==='Enter')pw?.focus();});
-  if(pw) pw.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+function gotoPage(page) {
+  if (page === 'tasks') render({page:'tasks', activeTask:null, detail:null, selFiles:[], note:''});
+  else if (page === 'employees') loadEmployees().then(() => render({page:'employees'}));
+  else render({page});
 }
 
-function togglePw(id,btn) {
-  const i=document.getElementById(id);if(!i)return;
-  i.type=i.type==='password'?'text':'password';
-  btn.textContent=i.type==='password'?'👁️':'🙈';
-}
+/* ── Karkas ──────────────────────────────────────────────── */
+function shell() {
+  const name    = (S.user && S.user.first_name) || 'Xodim';
+  const role    = S.isManager ? '👔 Rahbar' : '👤 Xodim';
+  const inTasks = S.page === 'tasks' || S.page === 'task-detail';
 
-async function doLogin() {
-  const phone=(document.getElementById('lphone')?.value||'').trim();
-  const pw   =document.getElementById('lpw')?.value||'';
-  const rem  =document.getElementById('remember')?.checked||false;
-  const errEl=document.getElementById('lerr');
-  const btn  =document.getElementById('lbtn');
-  if (!phone||!pw) { if(errEl){errEl.textContent='Telefon va parolni kiriting';errEl.classList.add('show');} return; }
-  if(btn){btn.disabled=true;btn.textContent='Yuklanmoqda…';}
-  if(errEl)errEl.classList.remove('show');
-  try {
-    const data=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,password:pw})}).then(r=>r.json());
-    if(data.error){if(errEl){errEl.textContent=data.error;errEl.classList.add('show');}if(btn){btn.disabled=false;btn.textContent='Kirish';}return;}
-    Store.setToken(data.token,rem);
-    S.isManager=data.role==='manager';
-    S.user={first_name:data.name};
-    await loadTasks();
-    render({page:'tasks'});
-  } catch(e) {
-    if(errEl){errEl.textContent='Tarmoq xatosi: '+e.message;errEl.classList.add('show');}
-    if(btn){btn.disabled=false;btn.textContent='Kirish';}
-  }
-}
-
-/* ── Shell (authenticated layout) ────────────────────────── */
-function renderShell() {
-  const name=S.user?.first_name||'Xodim';
-  const role=S.isManager?'👔 Rahbar':'👤 Xodim';
-  const inTasks=['tasks','task-detail'].includes(S.page);
-  const mgrNav=S.isManager?`
-    <button class="nav-item ${S.page==='create-task'?'active':''}" onclick="gotoPage('create-task')">
+  const mgrNav = S.isManager ? `
+    <button class="nav-item ${S.page === 'create-task' ? 'active' : ''}" data-act="page" data-page="create-task">
       <span class="nav-icon">➕</span> Topshiriq qo'shish
     </button>
-    <button class="nav-item ${S.page==='employees'?'active':''}" onclick="gotoPage('employees')">
+    <button class="nav-item ${S.page === 'employees' ? 'active' : ''}" data-act="page" data-page="employees">
       <span class="nav-icon">👥</span> Xodimlar
-    </button>`:'';
-  const mgrBnav=S.isManager?`
-    <button class="bnav-item ${S.page==='create-task'?'active':''}" onclick="gotoPage('create-task')">
+    </button>` : '';
+
+  const mgrBnav = S.isManager ? `
+    <button class="bnav-item ${S.page === 'create-task' ? 'active' : ''}" data-act="page" data-page="create-task">
       <span class="bnav-icon">➕</span>Yangi
     </button>
-    <button class="bnav-item ${S.page==='employees'?'active':''}" onclick="gotoPage('employees')">
+    <button class="bnav-item ${S.page === 'employees' ? 'active' : ''}" data-act="page" data-page="employees">
       <span class="bnav-icon">👥</span>Xodimlar
-    </button>`:'';
+    </button>` : '';
+
+  const logoutBtn = IS_TG ? '' : '<button class="btn-logout" data-act="logout">🚪 Chiqish</button>';
+
   return `
   <div id="app">
     <div class="sidebar">
@@ -614,27 +628,27 @@ function renderShell() {
         <div class="sb-user-role">${role}</div>
       </div>
       <nav class="sb-nav">
-        <button class="nav-item ${inTasks?'active':''}" onclick="gotoPage('tasks')">
+        <button class="nav-item ${inTasks ? 'active' : ''}" data-act="page" data-page="tasks">
           <span class="nav-icon">📋</span> Topshiriqlar
         </button>
         ${mgrNav}
       </nav>
-      <div class="sb-footer">
-        ${!IS_TG?`<button class="btn-logout" onclick="doLogout()">🚪 Chiqish</button>`:''}
-      </div>
+      <div class="sb-footer">${logoutBtn}</div>
     </div>
+
     <div class="main">
       <div class="mobile-header">
         <div class="mh-title">
           <h1 id="mh-t">Topshiriqlar</h1>
           <p>${esc(name)} · ${role}</p>
         </div>
-        ${!IS_TG?`<button class="btn btn-ghost btn-sm" onclick="doLogout()">Chiqish</button>`:''}
+        ${IS_TG ? '' : '<button class="btn btn-ghost btn-sm" data-act="logout">Chiqish</button>'}
       </div>
       <div id="page-content"></div>
     </div>
+
     <div class="bottom-nav">
-      <button class="bnav-item ${inTasks?'active':''}" onclick="gotoPage('tasks')">
+      <button class="bnav-item ${inTasks ? 'active' : ''}" data-act="page" data-page="tasks">
         <span class="bnav-icon">📋</span>Topshiriqlar
       </button>
       ${mgrBnav}
@@ -642,164 +656,250 @@ function renderShell() {
   </div>`;
 }
 
-function afterShell() {
-  if (tg?.BackButton) {
-    if (S.page==='task-detail') { tg.BackButton.show(); tg.BackButton.onClick(()=>gotoPage('tasks')); }
-    else tg.BackButton.hide();
-  }
+function syncBackButton() {
+  if (!tg || !tg.BackButton) return;
+  if (S.page === 'task-detail') tg.BackButton.show(); else tg.BackButton.hide();
 }
 
-function updatePage() {
-  const pc=document.getElementById('page-content');
-  if (!pc) return;
-  const mht=document.getElementById('mh-t');
-  const titles={'tasks':'Topshiriqlar','task-detail':`#${S.activeTask?.id||''} ${S.activeTask?.title||''}`.trim(),'create-task':"Topshiriq qo'shish",'employees':'Xodimlar'};
-  if (mht) mht.textContent=titles[S.page]||'Topshriqlar';
-  switch(S.page) {
-    case 'tasks':       pc.innerHTML=buildTaskList();   break;
-    case 'task-detail': pc.innerHTML=buildDetail();     bindDetail(); break;
-    case 'create-task': pc.innerHTML=buildCreateTask(); bindCreateTask(); break;
-    case 'employees':   pc.innerHTML=buildEmployees();  break;
-  }
+/* ════════════════════════════════════════════════════════════
+   Kirish
+   ════════════════════════════════════════════════════════════ */
+function loginPage() {
+  return `
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">
+        <span class="ll-icon">🏛️</span>
+        <div class="ll-title">Xonqa Yoshlar Agentligi</div>
+        <div class="ll-sub">Topshiriqlar tizimi — kirish</div>
+      </div>
+      <div class="form-error" id="lerr"></div>
+      <div class="form-group">
+        <label class="form-label" for="lphone">Telefon raqam</label>
+        <input class="form-input" type="tel" id="lphone" placeholder="+998 90 123 45 67" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="lpw">Parol</label>
+        <div class="pw-wrap">
+          <input class="form-input" type="password" id="lpw" placeholder="Parolingiz" autocomplete="current-password">
+          <button class="pw-eye" type="button" data-act="pw-eye" data-target="lpw">👁️</button>
+        </div>
+      </div>
+      <div class="remember-row">
+        <input type="checkbox" id="remember">
+        <label for="remember">Eslab qolish (7 kun)</label>
+      </div>
+      <button class="btn btn-primary btn-full" id="lbtn" data-act="login">Kirish</button>
+    </div>
+  </div>`;
 }
 
-function gotoPage(page) {
-  if (page==='tasks') render({page:'tasks',activeTask:null,detail:null});
-  else if (page==='employees') loadEmployees().then(()=>render({page:'employees'}));
-  else render({page});
+function focusLogin() {
+  const ph = document.getElementById('lphone'), pw = document.getElementById('lpw');
+  if (ph) ph.addEventListener('keydown', e => { if (e.key === 'Enter') pw && pw.focus(); });
+  if (pw) pw.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+}
+
+function togglePw(id, btn) {
+  const i = document.getElementById(id);
+  if (!i) return;
+  i.type = i.type === 'password' ? 'text' : 'password';
+  btn.textContent = i.type === 'password' ? '👁️' : '🙈';
+}
+
+async function doLogin() {
+  const phone = (document.getElementById('lphone') || {}).value || '';
+  const pw    = (document.getElementById('lpw')    || {}).value || '';
+  const rem   = !!(document.getElementById('remember') || {}).checked;
+  const btn   = document.getElementById('lbtn');
+
+  if (!phone.trim() || !pw) { formError('lerr', 'Telefon va parolni kiriting'); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Yuklanmoqda…'; }
+  formError('lerr', '');
+  try {
+    const res  = await fetch('/api/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({phone: phone.trim(), password: pw}),
+    });
+    const data = await res.json();
+    if (data.error) {
+      formError('lerr', data.error);
+      if (btn) { btn.disabled = false; btn.textContent = 'Kirish'; }
+      return;
+    }
+    Store.setToken(data.token, rem);
+    S = freshState();
+    S.isManager = data.role === 'manager';
+    S.user      = {first_name: data.name};
+    if (await loadTasks()) render({page:'tasks'});
+  } catch (e) {
+    formError('lerr', 'Tarmoq xatosi: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Kirish'; }
+  }
 }
 
 async function doLogout() {
-  await fetch('/api/logout',{method:'POST',headers:{'X-Session-Token':Store.getToken()}}).catch(()=>{});
-  Store.clear();
-  render({page:'login',user:null,tasks:[],isManager:false});
+  try {
+    await fetch('/api/logout', {method:'POST', headers: authHeaders()});
+  } catch (_) { /* tarmoq uzilgan bo'lsa ham chiqaramiz */ }
+  forceLogout();
 }
 
-/* ── Task list ───────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════
+   Topshiriqlar ro'yxati
+   ════════════════════════════════════════════════════════════ */
 async function loadTasks() {
-  const data=await api('/api/tasks');
-  if (!data) return;
-  S.tasks=data.tasks||[];
-  S.isManager=!!data.is_manager;
-  if (!S.user) S.user=data.user;
+  const data = await api('/api/tasks');
+  if (!data) return false;                 // 401 — allaqachon chiqarildi
+  if (data.error) { showAlert(data.error); return false; }
+  S.tasks     = data.tasks || [];
+  S.isManager = !!data.is_manager;
+  if (!S.user) S.user = data.user;
+  return true;
 }
 
-function buildTaskList() {
-  if (!S.tasks.length) return `<div class="center-box"><div class="icon">📭</div><p>Hozircha ochiq topshiriqlar yo'q</p></div>`;
-  const addBtn=S.isManager?`
-    <div class="tasks-full-row" style="margin-bottom:4px">
-      <button class="btn btn-primary btn-full" onclick="gotoPage('create-task')">➕ Yangi topshiriq qo'shish</button>
-    </div>`:'';
-  const cards=S.tasks.map(t=>{
-    const pct=t.total_count>0?Math.round(t.done_count/t.total_count*100):0;
-    const dl=deadlineFmt(t.deadline);
-    const badge=t.submitted_by_me?`<span class="badge badge-done">✅ Topshirdim</span>`:
-      dl.cls==='dl-red'?`<span class="badge badge-over">🔴 Kechikdi</span>`:
-      `<span class="badge badge-wait">⏳ Kutilmoqda</span>`;
+function taskListPage() {
+  if (!S.tasks.length) {
+    const add = S.isManager
+      ? '<button class="btn btn-primary mt-12" data-act="page" data-page="create-task">➕ Yangi topshiriq</button>'
+      : '';
+    return `<div class="center-box pad-nav"><div class="icon">📭</div>
+              <p>Hozircha ochiq topshiriqlar yo'q</p>${add}</div>`;
+  }
+
+  const addBtn = S.isManager ? `
+    <div class="tasks-full-row">
+      <button class="btn btn-primary btn-full" data-act="page" data-page="create-task">
+        ➕ Yangi topshiriq qo'shish
+      </button>
+    </div>` : '';
+
+  const cards = S.tasks.map(t => {
+    const p  = pct(t.done_count, t.total_count);
+    const dl = deadlineInfo(t.deadline);
+    const badge = t.submitted_by_me
+      ? '<span class="badge badge-done">✅ Topshirdim</span>'
+      : dl.cls === 'dl-red'
+        ? '<span class="badge badge-over">🔴 Kechikdi</span>'
+        : '<span class="badge badge-wait">⏳ Kutilmoqda</span>';
     return `
-    <div class="task-card" onclick="openTask(${t.id})">
+    <div class="task-card" data-act="task" data-id="${t.id}">
       <div class="tc-head"><span class="tc-num">#${t.id}</span>${badge}</div>
       <div class="tc-title">${esc(t.title)}</div>
       <div class="tc-meta">
-        <span>📅 ${dl.text.split('·')[0].trim()}</span>
+        <span>📅 ${esc(dl.date)}</span>
         <span>👥 ${t.done_count}/${t.total_count}</span>
       </div>
       <div class="prog-wrap">
-        <div class="prog-bar"><div class="prog-fill ${pgCls(pct)}" style="width:${pct}%"></div></div>
-        <div class="prog-text">${pct}% bajarildi</div>
+        <div class="prog-bar"><div class="prog-fill ${pgCls(p)}" style="width:${p}%"></div></div>
+        <div class="prog-text">${p}% bajarildi</div>
       </div>
     </div>`;
   }).join('');
-  return `<div class="tasks-container">${addBtn}${cards}</div>`;
+
+  return `<div class="tasks-container pad-nav">${addBtn}${cards}</div>`;
 }
 
-/* ── Open task ───────────────────────────────────────────── */
 async function openTask(id) {
-  const t=S.tasks.find(x=>x.id===id);
-  S.activeTask=t; S.selFiles=[]; S.note=''; S.detail=null;
-  render({page:'task-detail'});
-  if (S.isManager) {
-    const d=await api(`/api/tasks/${id}/detail`);
-    if (d&&!d.error) { S.detail=d; updatePage(); }
-  }
+  const t = S.tasks.find(x => x.id === id);
+  if (!t) return;
+  render({page:'task-detail', activeTask:t, detail:null, selFiles:[], note:''});
+
+  if (!S.isManager) return;
+  const d = await api(`/api/tasks/${id}/detail`);
+  /* Javob kechikkanda foydalanuvchi boshqa sahifaga o'tgan bo'lishi mumkin */
+  if (!d || d.error) return;
+  if (S.page !== 'task-detail' || !S.activeTask || S.activeTask.id !== id) return;
+  S.detail = d;
+  updatePage();
 }
 
-/* ── Detail view ─────────────────────────────────────────── */
-function buildDetail() { return S.isManager?buildMgrDetail():buildEmpDetail(); }
+/* ── Umumiy bo'laklar ────────────────────────────────────── */
+function fileListHtml(files, emptyText) {
+  if (!files || !files.length) return `<p class="text-hint text-sm">${esc(emptyText)}</p>`;
+  return files.map(f => `
+    <div class="file-item" data-act="file" data-fid="${esc(f.file_id)}" data-fname="${esc(f.file_name || 'fayl')}">
+      <span class="fi-icon">${fileIcon(f.file_name, f.kind)}</span>
+      <div class="fi-info">
+        <div class="fi-name">${esc(f.file_name || 'Fayl')}</div>
+        <div class="fi-type">${esc(fileExt(f.file_name))}</div>
+      </div>
+      <span>⬇️</span>
+    </div>`).join('');
+}
 
-function bindDetail() { /* inline onclick bindings */ }
+function taskHeaderHtml(t, extra) {
+  const dl = deadlineInfo(t.deadline);
+  return `
+  <div class="sec-card">
+    <div class="sec-title">📋 Topshiriq</div>
+    <div class="task-name">${esc(t.title)}</div>
+    ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
+    <div class="mt-12 flex gap-8 flex-wrap text-sm">
+      <span class="${dl.cls}">📅 ${esc(deadlineText(t.deadline))}</span>
+      ${extra || ''}
+    </div>
+  </div>`;
+}
 
-function buildMgrDetail() {
-  const t=S.activeTask;
-  if (!t) return `<div class="center-box"><p>Topshiriq topilmadi</p></div>`;
-  const done=t.done_count, total=t.total_count, notDone=total-done;
-  const pct=total>0?Math.round(done/total*100):0;
-  const dl=deadlineFmt(t.deadline);
-  const d=S.detail;
+const backBtnHtml = '<div><button class="btn btn-ghost btn-sm" data-act="page" data-page="tasks">← Orqaga</button></div>';
 
-  // Donut SVG
-  const r=42,circ=2*Math.PI*r,fill=circ*(done/Math.max(total,1));
-  const donut=`
-    <svg width="112" height="112" viewBox="0 0 112 112">
+/* ── Rahbar: svodka ──────────────────────────────────────── */
+function mgrDetailPage() {
+  const t = S.activeTask;
+  if (!t) return '<div class="center-box"><p>Topshiriq topilmadi</p></div>';
+
+  const done = t.done_count, total = t.total_count, p = pct(done, total);
+  const r = 42, circ = 2 * Math.PI * r, fill = circ * (total ? done / total : 0);
+
+  const donut = `
+    <svg width="112" height="112" viewBox="0 0 112 112" role="img" aria-label="${p}% bajarildi">
       <circle cx="56" cy="56" r="${r}" fill="none" stroke="var(--border)" stroke-width="12"/>
       <circle cx="56" cy="56" r="${r}" fill="none" stroke="#22c55e" stroke-width="12"
-        stroke-dasharray="${fill.toFixed(1)} ${(circ-fill).toFixed(1)}"
-        stroke-dashoffset="${(circ/4).toFixed(1)}" stroke-linecap="round" transform="rotate(-90,56,56)"/>
-      <text x="56" y="52" text-anchor="middle" font-size="20" font-weight="800" fill="var(--text)">${pct}%</text>
+        stroke-dasharray="${fill.toFixed(1)} ${(circ - fill).toFixed(1)}"
+        stroke-linecap="round" transform="rotate(-90,56,56)"/>
+      <text x="56" y="52" text-anchor="middle" font-size="20" font-weight="800" fill="var(--text)">${p}%</text>
       <text x="56" y="68" text-anchor="middle" font-size="10" fill="var(--hint)">bajarildi</text>
     </svg>`;
 
-  // Submissions list
-  let subsHtml='';
-  if (!d) {
-    subsHtml=`<div class="center-box" style="min-height:80px;padding:16px"><div class="spinner"></div></div>`;
+  let subs;
+  if (!S.detail) {
+    subs = '<div class="center-box" style="min-height:80px;padding:16px"><div class="spinner"></div></div>';
+  } else if (!S.detail.submissions.length) {
+    subs = '<p class="text-hint text-sm">Hali hech kim topshirmagan</p>';
   } else {
-    subsHtml=d.submissions.map(s=>`
+    subs = S.detail.submissions.map(s => `
       <div class="sub-item">
-        <div class="sub-avatar">${initials(s.full_name)}</div>
+        <div class="sub-avatar">${esc(initials(s.full_name))}</div>
         <div class="sub-info">
           <div class="sub-name">${esc(s.full_name)}</div>
-          <div class="sub-time">${fmtDate(s.submitted_at)}${s.note?' · '+esc(s.note.slice(0,40)):''}</div>
+          <div class="sub-time">${esc(fmtDate(s.submitted_at))}${s.note ? ' · ' + esc(String(s.note).slice(0,40)) : ''}</div>
         </div>
-        <div>
-          ${s.file_id?`<button class="btn btn-ghost btn-sm" onclick="dlFile('${esc(s.file_id)}','${esc(s.file_name||'fayl')}')">⬇️</button>`:
-            `<span class="badge badge-wait">Faqat izoh</span>`}
-        </div>
-      </div>`).join('')||`<p class="text-hint text-sm" style="padding:8px 0">Hali hech kim topshirmagan</p>`;
+        ${s.file_id
+          ? `<button class="btn btn-ghost btn-sm" data-act="file" data-fid="${esc(s.file_id)}" data-fname="${esc(s.file_name || 'fayl')}">⬇️</button>`
+          : '<span class="badge badge-wait">Faqat izoh</span>'}
+      </div>`).join('');
   }
 
-  const taskFiles=(t.files||[]).map(f=>`
-    <div class="file-item" onclick="dlFile('${esc(f.file_id)}','${esc(f.file_name||'fayl')}')">
-      <span class="fi-icon">${fileIcon(f.file_name,f.kind)}</span>
-      <div class="fi-info">
-        <div class="fi-name">${esc(f.file_name||'Fayl')}</div>
-        <div class="fi-type">${(f.file_name||'').split('.').pop().toUpperCase()||'Fayl'}</div>
-      </div><span>⬇️</span>
-    </div>`).join('')||`<p class="text-hint text-sm">Fayl yo'q</p>`;
-
   return `
-  <div class="detail-body">
-    <div><button class="btn btn-ghost btn-sm" onclick="gotoPage('tasks')">← Orqaga</button></div>
-
-    <div class="sec-card">
-      <div class="sec-title">📋 Topshiriq</div>
-      <div style="font-size:16px;font-weight:700;margin-bottom:8px">${esc(t.title)}</div>
-      ${t.description?`<div style="font-size:14px;line-height:1.6;white-space:pre-wrap;color:var(--hint)">${esc(t.description)}</div>`:''}
-      <div class="mt-12 ${dl.cls}" style="font-size:13px">📅 ${dl.text}</div>
-    </div>
+  <div class="detail-body pad-nav">
+    ${backBtnHtml}
+    ${taskHeaderHtml(t)}
 
     <div class="sec-card">
       <div class="sec-title">📊 Ijro svodkasi</div>
       <div class="donut-wrap">
         ${donut}
         <div class="donut-legend">
-          <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div><span>${done} ta topshirdi</span></div>
-          <div class="legend-item"><div class="legend-dot" style="background:var(--border)"></div><span>${notDone} ta topshirmadi</span></div>
-          <div class="legend-item"><div class="legend-dot" style="background:var(--primary)"></div><span>Jami: ${total} ta xodim</span></div>
+          <div class="legend-item"><span class="legend-dot" style="background:#22c55e"></span><span>${done} ta topshirdi</span></div>
+          <div class="legend-item"><span class="legend-dot" style="background:var(--border)"></span><span>${total - done} ta topshirmadi</span></div>
+          <div class="legend-item"><span class="legend-dot" style="background:var(--primary)"></span><span>Jami: ${total} ta xodim</span></div>
         </div>
       </div>
       <div class="mt-12">
-        <button class="zip-btn" onclick="dlZip(${t.id})">
+        <button class="zip-btn" data-act="zip" data-id="${t.id}">
           📦 ZIP ko'rinishda yuklash (barcha fayllar + Excel svodka)
         </button>
       </div>
@@ -807,151 +907,160 @@ function buildMgrDetail() {
 
     <div class="sec-card">
       <div class="sec-title">📎 Namuna fayllar</div>
-      ${taskFiles}
+      ${fileListHtml(t.files, "Fayl biriktirilmagan")}
     </div>
 
     <div class="sec-card">
       <div class="sec-title">✅ Topshirganlar (${done}/${total})</div>
-      ${subsHtml}
+      ${subs}
     </div>
   </div>`;
 }
 
-function buildEmpDetail() {
-  const t=S.activeTask;
-  if (!t) return `<div class="center-box"><p>Topshiriq topilmadi</p></div>`;
-  const done=t.done_count,total=t.total_count;
-  const pct=total>0?Math.round(done/total*100):0;
-  const dl=deadlineFmt(t.deadline);
+/* ── Xodim: topshirish ───────────────────────────────────── */
+function empDetailPage() {
+  const t = S.activeTask;
+  if (!t) return '<div class="center-box"><p>Topshiriq topilmadi</p></div>';
 
-  const taskFiles=(t.files||[]).map(f=>`
-    <div class="file-item" onclick="dlFile('${esc(f.file_id)}','${esc(f.file_name||'fayl')}')">
-      <span class="fi-icon">${fileIcon(f.file_name,f.kind)}</span>
-      <div class="fi-info">
-        <div class="fi-name">${esc(f.file_name||'Fayl')}</div>
-        <div class="fi-type">${(f.file_name||'').split('.').pop().toUpperCase()||'Fayl'}</div>
-      </div><span>⬇️</span>
-    </div>`).join('')||`<p class="text-hint text-sm">Fayl yo'q</p>`;
-
-  const subBanner=t.submitted_by_me?`
+  const p = pct(t.done_count, t.total_count);
+  const banner = t.submitted_by_me ? `
     <div class="submitted-banner">
       <span class="sb-icon">✅</span>
       <div>
         <div class="sb-lbl">Topshirildi!</div>
-        ${t.my_submission?.file_name?`<div class="sb-sub">📎 ${esc(t.my_submission.file_name)}</div>`:''}
+        ${t.my_submission && t.my_submission.file_name
+          ? `<div class="sb-sub">📎 ${esc(t.my_submission.file_name)}</div>` : ''}
       </div>
     </div>
-    <div class="resubmit-note">Qayta yuborish uchun yangi fayl tanlang</div>`:'';
+    <div class="resubmit-note">Qayta yuborish uchun yangi fayl tanlang yoki izohni yangilang</div>` : '';
 
   return `
-  <div class="detail-body">
-    <div><button class="btn btn-ghost btn-sm" onclick="gotoPage('tasks')">← Orqaga</button></div>
+  <div class="detail-body pad-nav">
+    ${backBtnHtml}
+    ${taskHeaderHtml(t, `<span class="text-hint">👥 ${t.done_count}/${t.total_count} (${p}%)</span>`)}
 
     <div class="sec-card">
-      <div class="sec-title">📋 Topshiriq</div>
-      <div style="font-size:16px;font-weight:700;margin-bottom:8px">${esc(t.title)}</div>
-      ${t.description?`<div style="font-size:14px;line-height:1.6;white-space:pre-wrap;color:var(--hint)">${esc(t.description)}</div>`:''}
-      <div class="mt-8 flex gap-8 flex-wrap" style="font-size:13px">
-        <span class="${dl.cls}">📅 ${dl.text}</span>
-        <span class="text-hint">👥 ${done}/${total} (${pct}%)</span>
-      </div>
-    </div>
-
-    <div class="sec-card">
-      <div class="sec-title">📎 Rahbar fayllar</div>
-      ${taskFiles}
+      <div class="sec-title">📎 Rahbar fayllari</div>
+      ${fileListHtml(t.files, "Fayl biriktirilmagan")}
     </div>
 
     <div class="sec-card">
       <div class="sec-title">📤 Mening topshiriqim</div>
-      ${subBanner}
+      ${banner}
       <div class="upload-area" id="uarea">
-        <input type="file" id="finput" multiple accept="*/*" onchange="onFiles(this.files)">
+        <input type="file" id="finput" multiple>
         <span class="upload-icon">📁</span>
         <span class="upload-lbl">Fayl tanlash</span>
-        <span class="upload-hint">Word, Excel, PDF, Rasm · Bir nechta mumkin</span>
+        <span class="upload-hint">Word, Excel, PDF, Rasm · Bir nechta mumkin · Maksimum 50 MB</span>
       </div>
       <div class="sel-files" id="sfiles"></div>
-      <textarea class="note-area" id="narea" placeholder="Izoh yozing (ixtiyoriy)…" rows="3" oninput="S.note=this.value"></textarea>
+      <textarea class="note-area" id="narea" rows="3"
+                placeholder="Izoh yozing (fayl bo'lmasa ham izoh bilan topshirish mumkin)…"></textarea>
     </div>
 
-    <div class="fixed-bottom">
-      <button class="btn btn-primary btn-full" id="subbtn" onclick="doSubmit()" disabled>
+    <div class="submit-bar">
+      <button class="btn btn-primary btn-full" id="subbtn" data-act="submit" disabled>
         📤 Topshiriqni yuborish
       </button>
     </div>
   </div>`;
 }
 
-function onFiles(files) { S.selFiles=Array.from(files); renderSelFiles(); }
-function removeFile(i) { S.selFiles.splice(i,1); renderSelFiles(); }
+function onFilesPicked(files) {
+  S.selFiles = Array.prototype.slice.call(files);
+  const total = S.selFiles.reduce((a, f) => a + f.size, 0);
+  if (total > MAX_UPLOAD) {
+    showAlert(`Fayllar hajmi ${fsize(total)} — maksimum 50 MB. Kamroq fayl tanlang.`);
+    S.selFiles = [];
+  }
+  renderSelFiles();
+}
+
+function removeFile(i) { S.selFiles.splice(i, 1); renderSelFiles(); }
+
+/* Fayl YOKI izoh bo'lsa yuborish mumkin — server ikkalasini ham qabul qiladi */
+function refreshSubmitBtn() {
+  const btn = document.getElementById('subbtn');
+  if (btn) btn.disabled = !(S.selFiles.length || S.note.trim());
+}
+
 function renderSelFiles() {
-  const w=document.getElementById('sfiles'),a=document.getElementById('uarea'),b=document.getElementById('subbtn');
-  if (!w) return;
-  if (!S.selFiles.length) { w.innerHTML=''; a?.classList.remove('has-files'); if(b)b.disabled=true; return; }
-  a?.classList.add('has-files');
-  if(b)b.disabled=false;
-  w.innerHTML=S.selFiles.map((f,i)=>`
+  const wrap = document.getElementById('sfiles');
+  const area = document.getElementById('uarea');
+  if (!wrap) return;
+  if (area) area.classList.toggle('has-files', S.selFiles.length > 0);
+  wrap.innerHTML = S.selFiles.map((f, i) => `
     <div class="sel-file">
-      <span>${fileIcon(f.name,'')}</span>
+      <span>${fileIcon(f.name, '')}</span>
       <span class="sf-name">${esc(f.name)}</span>
       <span class="sf-size">${fsize(f.size)}</span>
-      <button class="sf-del" onclick="removeFile(${i})">✕</button>
+      <button class="sf-del" data-act="rmfile" data-i="${i}">✕</button>
     </div>`).join('');
+  refreshSubmitBtn();
 }
 
 async function doSubmit() {
-  if (!S.selFiles.length) { showAlert('Avval fayl tanlang!'); return; }
-  const ov=document.createElement('div');
-  ov.className='overlay';
-  ov.innerHTML=`<div class="overlay-box"><div class="spinner"></div><div class="overlay-text">Yuklanmoqda… ${S.selFiles.length} ta fayl</div></div>`;
+  if (!S.selFiles.length && !S.note.trim()) return;
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.innerHTML = `<div class="overlay-box"><div class="spinner"></div>
+    <div class="overlay-text">${S.selFiles.length ? `Yuklanmoqda… ${S.selFiles.length} ta fayl` : 'Yuborilmoqda…'}</div></div>`;
   document.body.appendChild(ov);
+
   try {
-    const fd=new FormData();
-    fd.append('task_id',S.activeTask.id);
-    if(S.note)fd.append('note',S.note);
-    for(const f of S.selFiles)fd.append('files[]',f);
-    const tok=Store.getToken();
-    const headers={};
-    if(TG_INIT)headers['X-Telegram-Init-Data']=TG_INIT;
-    if(tok)headers['X-Session-Token']=tok;
-    const res=await fetch('/api/submit',{method:'POST',headers,body:fd});
-    const data=await res.json();
-    if(data.error)throw new Error(data.error);
-    const t=S.tasks.find(x=>x.id===S.activeTask.id);
-    if(t){t.submitted_by_me=true;t.done_count=data.done_count;t.total_count=data.total_count;t.my_submission={file_name:S.selFiles[0]?.name,submitted_at:new Date().toISOString()};}
+    const fd = new FormData();
+    fd.append('task_id', S.activeTask.id);
+    if (S.note.trim()) fd.append('note', S.note.trim());
+    S.selFiles.forEach(f => fd.append('files[]', f));
+
+    const data = await api('/api/submit', {method:'POST', body: fd});
+    if (!data) return;                      // 401 — chiqarib yuborildi
+    if (data.error) throw new Error(data.error);
+
+    const t = S.tasks.find(x => x.id === S.activeTask.id);
+    if (t) {
+      t.submitted_by_me = true;
+      t.done_count      = data.done_count;
+      t.total_count     = data.total_count;
+      t.my_submission   = {file_name: S.selFiles.length ? S.selFiles[0].name : null,
+                           submitted_at: new Date().toISOString()};
+    }
     ov.remove();
-    showSuccessOverlay(data.done_count,data.total_count);
-  } catch(e) { ov.remove(); showAlert('Xato: '+e.message); }
+    successOverlay(data.done_count, data.total_count);
+  } catch (e) {
+    ov.remove();
+    showAlert('Xato: ' + e.message);
+  }
 }
 
-function showSuccessOverlay(done,total) {
-  const el=document.createElement('div');
-  el.className='success-overlay';
-  el.innerHTML=`<div class="success-icon">✅</div><div class="success-title">Topshirildi!</div><div class="success-sub">${done}/${total} xodim bajargan</div>`;
+function successOverlay(done, total) {
+  const el = document.createElement('div');
+  el.className = 'success-overlay';
+  el.innerHTML = `<div class="success-icon">✅</div>
+    <div class="success-title">Topshirildi!</div>
+    <div class="success-sub">${done}/${total} xodim bajargan</div>`;
   document.body.appendChild(el);
-  if(tg)tg.HapticFeedback?.notificationOccurred('success');
-  setTimeout(()=>{el.remove();gotoPage('tasks');},2200);
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+  setTimeout(() => { el.remove(); gotoPage('tasks'); }, 2200);
 }
 
-function dlFile(fileId,name) {
-  const tok=Store.getToken(),init=TG_INIT;
-  const p=init?`init=${encodeURIComponent(init)}`:`token=${encodeURIComponent(tok)}`;
-  const a=document.createElement('a');
-  a.href=`/api/file/${fileId}?${p}`;a.download=name||'fayl';
-  document.body.appendChild(a);a.click();a.remove();
+/* Fayl nomi ?name= orqali uzatiladi — aks holda "file_12.docx" bo'lib tushadi */
+function dlFile(fileId, name) {
+  openUrl(`/api/file/${encodeURIComponent(fileId)}?${authQuery()}&name=${encodeURIComponent(name || 'fayl')}`);
 }
 
 function dlZip(taskId) {
-  const tok=Store.getToken(),init=TG_INIT;
-  const p=init?`init=${encodeURIComponent(init)}`:`token=${encodeURIComponent(tok)}`;
-  window.open(`/api/tasks/${taskId}/zip?${p}`,'_blank');
+  toast('📦 ZIP tayyorlanmoqda, biroz kuting…');
+  openUrl(`/api/tasks/${taskId}/zip?${authQuery()}`);
 }
 
-/* ── Create task ─────────────────────────────────────────── */
-function buildCreateTask() {
+/* ════════════════════════════════════════════════════════════
+   Topshiriq yaratish
+   ════════════════════════════════════════════════════════════ */
+function createTaskPage() {
   return `
-  <div class="detail-body">
+  <div class="detail-body pad-nav">
     <div class="sec-card">
       <div class="sec-title">➕ Yangi topshiriq yaratish</div>
       <div class="form-group">
@@ -965,79 +1074,91 @@ function buildCreateTask() {
       <div class="form-group">
         <label class="form-label" for="ct-dl">Muddat</label>
         <input class="form-input" id="ct-dl" type="datetime-local">
-        <div class="form-hint">Bo'sh qolsangiz topshiriq belgilangan muddat siz ochiq qoladi</div>
+        <div class="form-hint">Bo'sh qoldirsangiz topshiriq muddatsiz ochiq qoladi</div>
       </div>
       <div class="form-error" id="ct-err"></div>
-      <button class="btn btn-primary btn-full" id="ct-btn" onclick="doCreateTask()">✅ Topshiriq yaratish</button>
+      <button class="btn btn-primary btn-full" id="ct-btn" data-act="create-task">✅ Topshiriq yaratish</button>
     </div>
   </div>`;
 }
 
-function bindCreateTask() {
-  const inp=document.getElementById('ct-dl');
-  if (inp) {
-    const d=new Date();d.setDate(d.getDate()+1);d.setHours(18,0,0,0);
-    inp.value=d.toISOString().slice(0,16);
-  }
+function initDeadlineField() {
+  const inp = document.getElementById('ct-dl');
+  if (!inp) return;
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(18, 0, 0, 0);
+  inp.value = localInputValue(d);        // mahalliy vaqt, UTC emas
 }
 
 async function doCreateTask() {
-  const title=(document.getElementById('ct-title')?.value||'').trim();
-  const desc =(document.getElementById('ct-desc')?.value||'').trim();
-  const dlRaw=document.getElementById('ct-dl')?.value||'';
-  const errEl=document.getElementById('ct-err');
-  const btn  =document.getElementById('ct-btn');
-  if(!title){if(errEl){errEl.textContent="Topshiriq nomini kiriting";errEl.style.display='block';}return;}
-  if(btn){btn.disabled=true;btn.textContent='Saqlanmoqda…';}
-  if(errEl)errEl.style.display='none';
+  const title = ((document.getElementById('ct-title') || {}).value || '').trim();
+  const desc  = ((document.getElementById('ct-desc')  || {}).value || '').trim();
+  const dlRaw =  (document.getElementById('ct-dl')    || {}).value || '';
+  const btn   = document.getElementById('ct-btn');
+
+  if (!title) { formError('ct-err', 'Topshiriq nomini kiriting'); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Saqlanmoqda…'; }
+  formError('ct-err', '');
   try {
-    const body={title,description:desc};
-    if(dlRaw)body.deadline=new Date(dlRaw).toISOString();
-    const data=await api('/api/tasks',{method:'POST',body});
-    if(!data||data.error)throw new Error(data?.error||'Xato');
-    await loadTasks();
-    toast('✅ Topshiriq yaratildi!');
-    render({page:'tasks'});
-  } catch(e) {
-    if(errEl){errEl.textContent=e.message;errEl.style.display='block';}
-    if(btn){btn.disabled=false;btn.textContent='✅ Topshiriq yaratish';}
+    const body = {title, description: desc};
+    if (dlRaw) body.deadline = localToIso(dlRaw);
+    const data = await api('/api/tasks', {method:'POST', body});
+    if (!data) return;
+    if (data.error) throw new Error(data.error);
+    if (await loadTasks()) { toast('✅ Topshiriq yaratildi!'); render({page:'tasks'}); }
+  } catch (e) {
+    formError('ct-err', e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✅ Topshiriq yaratish'; }
   }
 }
 
-/* ── Employees ───────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════
+   Xodimlar
+   ════════════════════════════════════════════════════════════ */
 async function loadEmployees() {
-  const d=await api('/api/employees');
-  if(d&&d.employees)S.employees=d.employees;
+  const d = await api('/api/employees');
+  if (d && !d.error) S.employees = d.employees || [];
+  else if (d && d.error) showAlert(d.error);
 }
 
-function buildEmployees() {
-  const emps=S.employees;
-  const total=emps.length,active=emps.filter(e=>e.active).length;
-  const rows=emps.map(e=>`
-    <tr class="${e.active?'':'emp-inactive'}">
+function employeesPage() {
+  const emps   = S.employees;
+  const active = emps.filter(e => e.active).length;
+
+  const rows = emps.length ? emps.map(e => `
+    <tr class="${e.active ? '' : 'emp-inactive'}">
       <td>
         <div style="font-weight:600">${esc(e.full_name)}</div>
-        ${e.position?`<div style="font-size:12px;color:var(--hint)">${esc(e.position)}</div>`:''}
+        ${e.position ? `<div class="text-hint" style="font-size:12px">${esc(e.position)}</div>` : ''}
       </td>
-      <td class="hide-sm">${esc(e.login_phone||'—')}</td>
-      <td class="hide-sm">${e.has_password?`<span class="badge badge-done">✅ Bor</span>`:`<span class="badge badge-over">❌ Yo'q</span>`}</td>
-      <td><span class="${e.active?'badge badge-done':'badge badge-over'}">${e.active?'✅ Faol':'⛔ Nofaol'}</span></td>
+      <td class="hide-sm">${esc(e.login_phone || '—')}</td>
+      <td class="hide-sm">${e.has_password
+        ? '<span class="badge badge-done">✅ Bor</span>'
+        : "<span class=\"badge badge-over\">❌ Yo'q</span>"}</td>
+      <td>${e.active
+        ? '<span class="badge badge-done">✅ Faol</span>'
+        : '<span class="badge badge-over">⛔ Nofaol</span>'}</td>
       <td>
         <div class="flex gap-8">
-          <button class="btn btn-ghost btn-sm" onclick="openEmpModal(${e.tg_id})">✏️</button>
-          <button class="btn btn-ghost btn-sm" onclick="delEmp(${e.tg_id},'${esc(e.full_name)}')">🗑️</button>
+          <button class="btn btn-ghost btn-sm" data-act="emp-edit" data-id="${e.tg_id}">✏️</button>
+          <button class="btn btn-ghost btn-sm" data-act="emp-del"  data-id="${e.tg_id}">🗑️</button>
         </div>
       </td>
-    </tr>`).join('')||`<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--hint)">Xodimlar yo'q. Qo'shish tugmasini bosing.</td></tr>`;
+    </tr>`).join('')
+    : `<tr><td colspan="5" class="text-hint" style="text-align:center;padding:20px">
+         Xodimlar yo'q. "Qo'shish" tugmasini bosing.</td></tr>`;
+
   return `
-  <div style="padding:14px;display:flex;flex-direction:column;gap:14px">
+  <div class="detail-body pad-nav">
     <div class="sec-card">
       <div class="flex items-center justify-between" style="margin-bottom:12px">
         <div>
           <div style="font-size:17px;font-weight:700">Xodimlar</div>
-          <div class="text-hint text-sm">${active} faol / ${total} jami</div>
+          <div class="text-hint text-sm">${active} faol / ${emps.length} jami</div>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="openEmpModal(null)">➕ Qo'shish</button>
+        <button class="btn btn-primary btn-sm" data-act="emp-add">➕ Qo'shish</button>
       </div>
       <div class="table-wrap">
         <table class="emp-table">
@@ -1054,124 +1175,196 @@ function buildEmployees() {
 }
 
 function openEmpModal(tgId) {
-  const emp=tgId!=null?S.employees.find(e=>e.tg_id===tgId):null;
-  const edit=!!emp;
-  const html=`
-  <div class="modal-overlay" onclick="if(event.target===this)closeEmpModal()">
+  const emp  = tgId != null ? S.employees.find(e => e.tg_id === tgId) : null;
+  const edit = !!emp;
+  const c    = document.getElementById('emp-modal');
+  if (!c) return;
+
+  c.innerHTML = `
+  <div class="modal-overlay" data-act="modal-bg">
     <div class="modal">
       <div class="modal-head">
-        <div class="modal-title">${edit?'✏️ Xodimni tahrirlash':'➕ Yangi xodim qo\'shish'}</div>
-        <button class="modal-close" onclick="closeEmpModal()">✕</button>
+        <div class="modal-title">${edit ? '✏️ Xodimni tahrirlash' : '➕ Yangi xodim'}</div>
+        <button class="modal-close" data-act="emp-close">✕</button>
       </div>
       <div class="form-group">
-        <label class="form-label">Ism Sharif *</label>
-        <input class="form-input" id="em-name" type="text" placeholder="Qodirov Sherzod Aliyevich" value="${esc(emp?.full_name||'')}">
+        <label class="form-label" for="em-name">Ism Sharif *</label>
+        <input class="form-input" id="em-name" type="text"
+               placeholder="Qodirov Sherzod Aliyevich" value="${esc(emp && emp.full_name)}">
       </div>
       <div class="form-group">
-        <label class="form-label">Lavozim</label>
-        <input class="form-input" id="em-pos" type="text" placeholder="Mutaxassis" value="${esc(emp?.position||'')}">
+        <label class="form-label" for="em-pos">Lavozim</label>
+        <input class="form-input" id="em-pos" type="text"
+               placeholder="Yetakchi mutaxassis" value="${esc(emp && emp.position)}">
       </div>
       <div class="form-group">
-        <label class="form-label">Login telefon *</label>
-        <input class="form-input" id="em-phone" type="tel" placeholder="+998901234567" value="${esc(emp?.login_phone||'')}">
-        <div class="form-hint">Xodim shu raqam bilan kiradi</div>
+        <label class="form-label" for="em-phone">Login telefon *</label>
+        <input class="form-input" id="em-phone" type="tel"
+               placeholder="+998901234567" value="${esc(emp && emp.login_phone)}">
+        <div class="form-hint">Xodim shu raqam bilan tizimga kiradi</div>
       </div>
       <div class="form-group">
-        <label class="form-label">${edit?"Yangi parol (bo'sh = o'zgarmaydi)":'Parol *'}</label>
+        <label class="form-label" for="em-pw">${edit ? "Yangi parol (bo'sh = o'zgarmaydi)" : 'Parol *'}</label>
         <div class="pw-wrap">
-          <input class="form-input" id="em-pw" type="password" placeholder="${edit?'Yangi parol (ixtiyoriy)':'Parol kiriting'}" oninput="pwStr(this.value)">
-          <button class="pw-eye" type="button" onclick="togglePw('em-pw',this)">👁️</button>
+          <input class="form-input" id="em-pw" type="password"
+                 placeholder="${edit ? 'Yangi parol (ixtiyoriy)' : 'Parol kiriting'}">
+          <button class="pw-eye" type="button" data-act="pw-eye" data-target="em-pw">👁️</button>
         </div>
         <div class="pw-bar"><div class="pw-fill" id="pwfill"></div></div>
         <div class="pw-text" id="pwtxt"></div>
       </div>
-      ${edit?`
+      ${edit ? `
       <div class="form-group">
-        <label class="form-label">Holat</label>
+        <label class="form-label" for="em-active">Holat</label>
         <select class="form-input" id="em-active">
-          <option value="1" ${emp?.active?'selected':''}>✅ Faol</option>
-          <option value="0" ${!emp?.active?'selected':''}>⛔ Nofaol</option>
+          <option value="1" ${emp.active ? 'selected' : ''}>✅ Faol</option>
+          <option value="0" ${emp.active ? '' : 'selected'}>⛔ Nofaol</option>
         </select>
-      </div>`:''}
+      </div>` : ''}
       <div class="form-error" id="em-err"></div>
-      <button class="btn btn-primary btn-full" onclick="saveEmp(${edit?tgId:'null'})">
-        ${edit?'💾 Saqlash':"➕ Xodim qo'shish"}
+      <button class="btn btn-primary btn-full" data-act="emp-save" data-id="${edit ? tgId : ''}">
+        ${edit ? '💾 Saqlash' : "➕ Xodim qo'shish"}
       </button>
     </div>
   </div>`;
-  const c=document.getElementById('emp-modal');if(c)c.innerHTML=html;
+
+  const pw = document.getElementById('em-pw');
+  if (pw) pw.addEventListener('input', () => pwStrength(pw.value));
 }
 
-function closeEmpModal(){ const c=document.getElementById('emp-modal');if(c)c.innerHTML=''; }
+function closeEmpModal() {
+  const c = document.getElementById('emp-modal');
+  if (c) c.innerHTML = '';
+}
 
-function pwStr(v) {
-  const fill=document.getElementById('pwfill'),txt=document.getElementById('pwtxt');
-  if(!fill||!txt)return;
-  let sc=0;
-  if(v.length>=6)sc++;if(v.length>=8)sc++;
-  if(/[0-9]/.test(v)&&/[a-zA-Z]/.test(v))sc++;
-  if(/[!@#$%^&*_]/.test(v))sc++;
-  const pcts=[0,25,50,75,100];const colors=['','#ef4444','#f59e0b','#22c55e','#16a34a'];const labels=['','Juda zaif','Zaif','Yaxshi','Kuchli'];
-  fill.style.width=pcts[sc]+'%';fill.style.background=colors[sc];
-  txt.textContent=v?labels[sc]:'';txt.style.color=colors[sc];
+function pwStrength(v) {
+  const fill = document.getElementById('pwfill'), txt = document.getElementById('pwtxt');
+  if (!fill || !txt) return;
+  let sc = 0;
+  if (v.length >= 6) sc++;
+  if (v.length >= 8) sc++;
+  if (/[0-9]/.test(v) && /[a-zA-Z]/.test(v)) sc++;
+  if (/[^a-zA-Z0-9]/.test(v)) sc++;
+  const widths = [0, 25, 50, 75, 100];
+  const colors = ['', '#ef4444', '#f59e0b', '#22c55e', '#16a34a'];
+  const labels = ['', 'Juda zaif', 'Zaif', 'Yaxshi', 'Kuchli'];
+  fill.style.width      = widths[sc] + '%';
+  fill.style.background = colors[sc];
+  txt.textContent = v ? labels[sc] : '';
+  txt.style.color = colors[sc];
 }
 
 async function saveEmp(tgId) {
-  const name =(document.getElementById('em-name')?.value||'').trim();
-  const pos  =(document.getElementById('em-pos')?.value||'').trim();
-  const phone=(document.getElementById('em-phone')?.value||'').trim();
-  const pw   =document.getElementById('em-pw')?.value||'';
-  const active=parseInt(document.getElementById('em-active')?.value||'1');
-  const errEl=document.getElementById('em-err');
-  if(!name||!phone){if(errEl){errEl.textContent='Ism va telefon majburiy';errEl.style.display='block';}return;}
-  if(tgId==null&&!pw){if(errEl){errEl.textContent='Parol majburiy';errEl.style.display='block';}return;}
+  const val   = id => ((document.getElementById(id) || {}).value || '').trim();
+  const name  = val('em-name'), pos = val('em-pos'), phone = val('em-phone');
+  const pw    = (document.getElementById('em-pw') || {}).value || '';
+  const activeEl = document.getElementById('em-active');
+
+  if (!name || !phone)      { formError('em-err', 'Ism va telefon majburiy'); return; }
+  if (tgId == null && !pw)  { formError('em-err', 'Parol majburiy'); return; }
+
+  formError('em-err', '');
   try {
     let data;
-    if(tgId==null) {
-      data=await api('/api/employees',{method:'POST',body:{full_name:name,position:pos,login_phone:phone,password:pw}});
+    if (tgId == null) {
+      data = await api('/api/employees', {method:'POST',
+        body:{full_name:name, position:pos, login_phone:phone, password:pw}});
     } else {
-      const body={full_name:name,position:pos,login_phone:phone,active};
-      if(pw)body.password=pw;
-      data=await api(`/api/employees/${tgId}`,{method:'PUT',body});
+      const body = {full_name:name, position:pos, login_phone:phone,
+                    active: activeEl ? parseInt(activeEl.value, 10) : 1};
+      if (pw) body.password = pw;
+      data = await api(`/api/employees/${tgId}`, {method:'PUT', body});
     }
-    if(!data||data.error)throw new Error(data?.error||'Xato');
+    if (!data) return;
+    if (data.error) throw new Error(data.error);
     closeEmpModal();
     await loadEmployees();
     render({page:'employees'});
-    toast(tgId==null?"✅ Xodim qo'shildi":'✅ Xodim yangilandi');
-  } catch(e) { if(errEl){errEl.textContent=e.message;errEl.style.display='block';} }
+    toast(tgId == null ? "✅ Xodim qo'shildi" : '✅ Xodim yangilandi');
+  } catch (e) {
+    formError('em-err', e.message);
+  }
 }
 
-async function delEmp(tgId,name) {
-  if(!confirm(`"${name}" ni o'chirishni tasdiqlaysizmi?`))return;
-  const data=await api(`/api/employees/${tgId}`,{method:'DELETE'});
-  if(data?.ok){ await loadEmployees(); render({page:'employees'}); toast("🗑️ Xodim o'chirildi"); }
-  else toast('Xato: '+(data?.error||"Noma'lum"));
+async function delEmp(tgId) {
+  const emp = S.employees.find(e => e.tg_id === tgId);
+  const ok  = await showConfirm(`"${emp ? emp.full_name : 'Xodim'}" ni o'chirishni tasdiqlaysizmi?`);
+  if (!ok) return;
+  const data = await api(`/api/employees/${tgId}`, {method:'DELETE'});
+  if (!data) return;
+  if (data.error) { showAlert(data.error); return; }
+  await loadEmployees();
+  render({page:'employees'});
+  toast("🗑️ Xodim o'chirildi");
 }
 
-/* ── Init ────────────────────────────────────────────────── */
-(async()=>{
+/* ════════════════════════════════════════════════════════════
+   Hodisalar — bitta delegatsiyalangan tinglovchi.
+   Inline onclick ishlatilmaydi: apostrofli ismlar ("O'ktam")
+   handlerni buzardi va XSS yo'lini ochardi.
+   ════════════════════════════════════════════════════════════ */
+document.addEventListener('click', ev => {
+  const el = ev.target.closest('[data-act]');
+  if (!el) return;
+  const d = el.dataset;
+
+  switch (d.act) {
+    case 'page':        gotoPage(d.page); break;
+    case 'task':        openTask(parseInt(d.id, 10)); break;
+    case 'file':        dlFile(d.fid, d.fname); break;
+    case 'zip':         dlZip(parseInt(d.id, 10)); break;
+    case 'rmfile':      removeFile(parseInt(d.i, 10)); break;
+    case 'submit':      doSubmit(); break;
+    case 'create-task': doCreateTask(); break;
+    case 'login':       doLogin(); break;
+    case 'logout':      doLogout(); break;
+    case 'pw-eye':      togglePw(d.target, el); break;
+    case 'emp-add':     openEmpModal(null); break;
+    case 'emp-edit':    openEmpModal(parseInt(d.id, 10)); break;
+    case 'emp-del':     delEmp(parseInt(d.id, 10)); break;
+    case 'emp-save':    saveEmp(d.id === '' ? null : parseInt(d.id, 10)); break;
+    case 'emp-close':   closeEmpModal(); break;
+    case 'modal-bg':    if (ev.target === el) closeEmpModal(); break;
+  }
+});
+
+document.addEventListener('change', ev => {
+  if (ev.target.id === 'finput') onFilesPicked(ev.target.files);
+});
+
+document.addEventListener('input', ev => {
+  if (ev.target.id === 'narea') { S.note = ev.target.value; refreshSubmitBtn(); }
+});
+
+/* BackButton faqat BIR MARTA ro'yxatdan o'tadi — har render'da emas,
+   aks holda callbacklar to'planib ketadi. */
+if (tg && tg.BackButton) tg.BackButton.onClick(() => gotoPage('tasks'));
+
+/* ════════════════════════════════════════════════════════════
+   Ishga tushirish
+   ════════════════════════════════════════════════════════════ */
+(async () => {
   render({page:'loading'});
 
-  // Telegram Mini App
   if (IS_TG) {
-    try { await loadTasks(); render({page:'tasks'}); }
-    catch(e) {
-      document.getElementById('root').innerHTML=`
-        <div class="center-box" style="min-height:100dvh">
-          <div class="icon">⚠️</div><p>Yuklab bo'lmadi<br><small>${esc(e.message)}</small></p>
-        </div>`;
-    }
+    if (await loadTasks()) render({page:'tasks'});
+    else document.getElementById('root').innerHTML = `
+      <div class="center-box" style="min-height:100dvh">
+        <div class="icon">⚠️</div>
+        <p>Ma'lumotlarni yuklab bo'lmadi. Internetni tekshirib, qaytadan oching.</p>
+      </div>`;
     return;
   }
 
-  // Web browser — check stored session
-  const tok=Store.getToken();
-  if (tok) {
+  if (Store.getToken()) {
     try {
-      const me=await fetch('/api/me',{headers:{'X-Session-Token':tok}}).then(r=>r.json());
-      if(me.user){ S.user=me.user; S.isManager=!!me.is_manager; await loadTasks(); render({page:'tasks'}); return; }
-    } catch(_){}
+      const me = await fetch('/api/me', {headers: authHeaders()}).then(r => r.json());
+      if (me && me.user) {
+        S.user      = me.user;
+        S.isManager = !!me.is_manager;
+        if (await loadTasks()) { render({page:'tasks'}); return; }
+      }
+    } catch (_) { /* pastda login sahifasiga tushamiz */ }
     Store.clear();
   }
   render({page:'login'});

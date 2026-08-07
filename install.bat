@@ -1,9 +1,9 @@
 @echo off
-title Robot Mutaxassis Bot - O'rnatish
+title Topshiriq Bot - O'rnatish
 
 echo.
 echo ===================================================
-echo    ROBOT MUTAXASSIS BOT - O'RNATISH
+echo    TOPSHIRIQ BOTI - O'RNATISH
 echo ===================================================
 echo.
 

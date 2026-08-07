@@ -44,6 +44,10 @@ cp .env.example .env
 | `EXECUTION_GROUP_ID` | Ijro guruhi ID'si |
 | `TIMEZONE` | Vaqt mintaqasi (default: `Asia/Tashkent`) |
 | `REMINDER_MINUTES` | Eslatma vaqtlari, daqiqada (masalan `120,30`) |
+| `WEBAPP_URL` | Web platforma HTTPS manzili (masalan `https://topshriq.example.com`) |
+| `WEBAPP_HOST` / `WEBAPP_PORT` | Server manzili va porti (default `0.0.0.0:8080`) |
+| `WEBAPP_MANAGER_PHONE` | Rahbarning saytga kirish telefoni |
+| `WEBAPP_MANAGER_PASSWORD` | Rahbarning saytga kirish paroli |
 
 > **ID'larni bilish:** botni guruhga qo'shing va `/id` deb yozing — chat va
 > foydalanuvchi ID'lari chiqadi.
@@ -91,6 +95,54 @@ Fayl, rasm yoki matnni shu tarzda yuborsangiz bot avtomatik qabul qiladi.
 | `/id` | Hamma | Chat/foydalanuvchi ID |
 | `/help` | Hamma | Yordam |
 
+## 🌐 Web platforma (sayt + Telegram Mini App)
+
+Bot bilan bir vaqtda **web sayt** ham ishlaydi. Xodimlar ham telefondan
+(Telegram Mini App), ham kompyuterdan (brauzer) kirishlari mumkin — dizayn
+ikkalasiga ham moslashadi.
+
+### Ishga tushirish
+`.env` da `WEBAPP_URL`, `WEBAPP_MANAGER_PHONE` va `WEBAPP_MANAGER_PASSWORD`
+ni to'ldiring. Sayt HTTPS bo'lishi shart (Telegram Mini App talabi):
+
+```nginx
+server {
+    server_name topshriq.example.com;
+    location / { proxy_pass http://127.0.0.1:8080; }
+}
+```
+```bash
+sudo certbot --nginx -d topshriq.example.com
+```
+
+### Rahbar nima qila oladi
+| Bo'lim | Tavsif |
+|---|---|
+| 📋 Topshiriqlar | Barcha ochiq topshiriqlar, har birida bajarilish foizi |
+| ➕ Topshiriq qo'shish | Nomi, tavsifi va muddati bilan yangi topshiriq. Yaratilgach ijro guruhiga avtomatik e'lon qilinadi |
+| 📊 Svodka | Topshiriq ustiga bosilganda: doiraviy diagramma, kim topshirgani, vaqti va izohi |
+| 📦 ZIP yuklash | Bitta tugma — barcha xodimlar yuklagan fayllar (har biri o'z papkasida) + `svodka.xlsx` bitta ZIP faylda |
+| 👥 Xodimlar | Xodim qo'shish/tahrirlash/o'chirish: ism, lavozim, login telefon, parol (parol kuchi ko'rsatkichi bilan) |
+
+### Xodim nima qila oladi
+Topshiriq ustiga bosadi → rahbar biriktirgan namuna fayllarni yuklab oladi →
+o'z fayllarini tanlaydi va izoh yozadi → **Yuborish** tugmasini bosadi.
+Fayl bo'lmasa ham, faqat izoh bilan topshirish mumkin.
+
+### Kirish va xavfsizlik
+- Xodim **telefon raqami + parol** bilan kiradi; "Eslab qolish" belgilansa
+  sessiya 7 kun saqlanadi, aks holda brauzer yopilguncha.
+- Parollar `PBKDF2-HMAC-SHA256` (100 000 iteratsiya, tasodifiy tuz) bilan
+  xeshlanadi — bazada ochiq parol saqlanmaydi.
+- Telegram Mini App ichida `initData` HMAC imzosi tekshiriladi, alohida
+  parol so'ralmaydi.
+- Muddati o'tgan sessiyalar har 12 soatda avtomatik tozalanadi.
+
+> **Eslatma:** web orqali qo'shilgan xodimning Telegram hisobi bo'lmaydi,
+> shuning uchun unga shaxsiy eslatma yuborilmaydi — u guruh eslatmasida
+> oddiy matn sifatida ko'rsatiladi. Xodim keyinchalik botga
+> `/ruyxatdan_otish` yozsa, Telegram hisobi ham ulanadi.
+
 ## Xodimlar ro'yxati
 Ijro guruhida birinchi marta ish yuborgan xodim **avtomatik** ro'yxatga
 qo'shiladi. Shuningdek rahbar qo'lda `/hodim_qoshish` (xodim xabariga reply)
@@ -102,6 +154,8 @@ hisoblanadi.
 - **Ma'lumotlar bazasi:** SQLite (`aiosqlite`)
 - **Eslatmalar:** APScheduler (har 5 daqiqada tekshiradi)
 - **Excel:** openpyxl
+- **Web server:** aiohttp (bot bilan bitta asyncio tsiklida ishlaydi)
+- **Frontend:** bog'liqliksiz vanilla JS (`bot/static/index.html`)
 
 ## Loyiha tuzilmasi
 ```
@@ -110,12 +164,17 @@ bot/
 ├── config.py          # .env sozlamalari
 ├── database.py        # SQLite bilan ishlash
 ├── middlewares.py     # albom yig'ish, bog'liqliklar
-├── scheduler.py       # avtomatik eslatmalar
+├── scheduler.py       # avtomatik eslatmalar + sessiya tozalash
+├── webapp.py          # web sayt / Mini App API (aiohttp)
+├── static/
+│   └── index.html     # web interfeys (login, rahbar/xodim panel)
 ├── handlers/
 │   ├── common.py      # /start, /help, /id
 │   ├── employees.py   # xodimlarni boshqarish
 │   ├── tasks.py       # topshiriq yaratish
 │   ├── submissions.py # ishlarni qabul qilish
+│   ├── buttons.py     # tugmali menyu
+│   ├── ai_handler.py  # AI yordamchi
 │   └── reports.py     # svodka, excel, eslatma
 └── utils/
     ├── deadline.py    # muddat parsingi
