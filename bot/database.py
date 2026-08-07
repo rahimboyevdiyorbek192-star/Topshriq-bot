@@ -95,6 +95,7 @@ class Database:
             "ALTER TABLE employees ADD COLUMN position TEXT",
             "ALTER TABLE submissions ADD COLUMN exif_date TEXT",
             "ALTER TABLE submission_files ADD COLUMN exif_date TEXT",
+            "ALTER TABLE employees ADD COLUMN last_bot_msg_id INTEGER",
         ]:
             try:
                 await self._conn.execute(sql)
@@ -166,6 +167,19 @@ class Database:
         )
         row = await cur.fetchone()
         return row["c"] if row else 0
+
+    async def get_employee_bot_msg(self, tg_id: int) -> int | None:
+        cur = await self.conn.execute(
+            "SELECT last_bot_msg_id FROM employees WHERE tg_id = ?", (tg_id,)
+        )
+        row = await cur.fetchone()
+        return row["last_bot_msg_id"] if row else None
+
+    async def set_employee_bot_msg(self, tg_id: int, msg_id: int | None) -> None:
+        await self.conn.execute(
+            "UPDATE employees SET last_bot_msg_id = ? WHERE tg_id = ?", (msg_id, tg_id)
+        )
+        await self.conn.commit()
 
     # ---------- Topshiriqlar ----------
     async def create_task(

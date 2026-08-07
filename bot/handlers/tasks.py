@@ -23,6 +23,7 @@ from ..config import Config
 from ..database import Database
 from ..utils.deadline import format_deadline, humanize_left, parse_deadline
 from ..utils.files import extract_file, message_text
+from ..utils.notify import send_and_clean
 
 router = Router()
 
@@ -340,6 +341,19 @@ async def _announce_task(
 
     if announce_msg:
         await db.set_announce_msg(task_id, announce_msg.message_id)
+
+    # Har bir xodimning shaxsiy chatiga yangi topshiriq haqida xabar yuborish
+    dm_text = f"📢 <b>Yangi topshiriq #{task_id}</b>\n\n<b>{title}</b>\n"
+    if body:
+        dm_text += f"\n{body}\n"
+    dm_text += f"\n🗓 Muddat: {format_deadline(deadline_iso, config.tz)}"
+    dm_text += "\n\n📱 Saytga kirib topshiriqni ko'ring va bajarib bo'lgach faylingizni yuboring."
+
+    employees = await db.list_employees(active_only=True)
+    for emp in employees:
+        if emp["tg_id"] <= 0:
+            continue
+        await send_and_clean(bot, db, emp["tg_id"], dm_text)
 
 
 # ── /topshiriqlar va /yopish ─────────────────────────────────

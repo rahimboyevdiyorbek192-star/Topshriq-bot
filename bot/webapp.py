@@ -539,7 +539,6 @@ async def handle_submit(request: web.Request) -> web.Response:
 
     # ── 3. Fayllarni Telegram'ga yuborish ─────────────────
     uploaded: list[tuple[str, str, str | None]] = []   # (file_id, fname, exif_date)
-    msg_ids_to_delete: list[int] = []
     send_chat = config.execution_group_id or (
         config.manager_ids[0] if config.manager_ids else None
     )
@@ -560,7 +559,6 @@ async def handle_submit(request: web.Request) -> web.Response:
                 return _json({"error": f"Fayl yuborilmadi: {fname}"}, 502)
             if sent and sent.document:
                 uploaded.append((sent.document.file_id, fname, exif_d))
-                msg_ids_to_delete.append(sent.message_id)
 
     # ── 4. Bazaga yozish ──────────────────────────────────
     try:
@@ -576,13 +574,6 @@ async def handle_submit(request: web.Request) -> web.Response:
     except Exception as exc:
         logger.error("Submit bazaga yozilmadi: %s", exc, exc_info=True)
         return _json({"error": "Ma\'lumotni saqlab bo\'lmadi"}, 500)
-
-    # ── 5. Guruhni toza saqlash: saqlagandan keyin xabarlarni o'chiramiz ─
-    for mid in msg_ids_to_delete:
-        try:
-            await bot.delete_message(send_chat, mid)
-        except Exception:
-            pass   # o'chirish huquqi bo'lmasa yoki xabar topilmasa muammo emas
 
     submitted = await db.submitted_employee_ids(task_id)
     return _json({

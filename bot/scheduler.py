@@ -10,6 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .config import Config
 from .database import Database
 from .utils.deadline import format_deadline, humanize_left
+from .utils.notify import send_and_clean
 
 logger = logging.getLogger(__name__)
 
@@ -82,29 +83,19 @@ async def _send_reminder(
         except Exception as exc:
             logger.warning("Guruh eslatmasi yuborilmadi (task %s): %s", task["id"], exc)
 
-    # Userbot orqali shaxsiy xabar
-    if userbot:
-        head_private = "⏰ Salom! Topshiriq muddati yaqinlashdi." if not overdue else "🔴 Topshiriq muddati o'tib ketdi!"
-        private_text = (
-            f"{head_private}\n\n"
-            f"📋 <b>#{task['id']}: {task['title']}</b>\n"
-            f"🗓 Muddat: {format_deadline(task['deadline'], config.tz)}\n"
-            f"{humanize_left(task['deadline'], config.tz)}\n\n"
-            "Iltimos, ishingizni tezroq ijro guruhiga tashlang."
-        )
-        for e in not_done:
-            if e["tg_id"] <= 0:
-                continue        # web xodimning Telegram hisobi yo'q
-            try:
-                ok = await userbot.send_message(e["tg_id"], private_text)
-                if ok:
-                    logger.info(
-                        "Shaxsiy eslatma: %s → %s", e["full_name"], e["tg_id"]
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "Shaxsiy eslatma yuborilmadi (%s): %s", e["tg_id"], exc
-                )
+    # Bot orqali shaxsiy eslatma (eski xabar o'chirilib yangi yuboriladi)
+    head_private = "⏰ Salom! Topshiriq muddati yaqinlashdi." if not overdue else "🔴 Topshiriq muddati o'tib ketdi!"
+    private_text = (
+        f"{head_private}\n\n"
+        f"📋 <b>#{task['id']}: {task['title']}</b>\n"
+        f"🗓 Muddat: {format_deadline(task['deadline'], config.tz)}\n"
+        f"{humanize_left(task['deadline'], config.tz)}\n\n"
+        "Iltimos, ishingizni tezroq sayt orqali topshiring."
+    )
+    for e in not_done:
+        if e["tg_id"] <= 0:
+            continue
+        await send_and_clean(bot, db, e["tg_id"], private_text)
 
 
 async def _cleanup_sessions(db: Database) -> None:
