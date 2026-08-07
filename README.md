@@ -129,6 +129,20 @@ Topshiriq ustiga bosadi → rahbar biriktirgan namuna fayllarni yuklab oladi →
 o'z fayllarini tanlaydi va izoh yozadi → **Yuborish** tugmasini bosadi.
 Fayl bo'lmasa ham, faqat izoh bilan topshirish mumkin.
 
+### Kim nimani ko'ra oladi
+| Ma'lumot | Xodim | Rahbar |
+|---|---|---|
+| Topshiriqlar ro'yxati va namuna fayllar | ✅ | ✅ |
+| O'zining topshirgan ishi | ✅ | ✅ |
+| **Boshqa xodimning fayli** | ❌ 403 | ✅ |
+| Kim topshirgani svodkasi | ❌ 403 | ✅ |
+| ZIP yuklab olish | ❌ 403 | ✅ |
+| Xodimlarni boshqarish | ❌ 403 | ✅ |
+
+Har bir fayl so'rovida egalik tekshiriladi: xodim faqat namuna fayllarni va
+o'zi yuborgan fayllarni yuklay oladi. Boshqa xodimning `file_id` sini qo'lga
+kiritsa ham `403` oladi.
+
 ### Kirish va xavfsizlik
 - Xodim **telefon raqami + parol** bilan kiradi; "Eslab qolish" belgilansa
   sessiya 7 kun saqlanadi, aks holda brauzer yopilguncha.
@@ -155,6 +169,8 @@ hisoblanadi.
 - **Eslatmalar:** APScheduler (har 5 daqiqada tekshiradi)
 - **Excel:** openpyxl
 - **Web server:** aiohttp (bot bilan bitta asyncio tsiklida ishlaydi)
+- **AI:** bitta interfeys (`bot/ai/`), provayder `.env` bo'yicha tanlanadi —
+  mahalliy Ollama (bepul) yoki Anthropic Claude (pullik)
 - **Frontend:** bog'liqliksiz vanilla JS (`bot/static/index.html`)
 
 ## Loyiha tuzilmasi
@@ -166,6 +182,13 @@ bot/
 ├── middlewares.py     # albom yig'ish, bog'liqliklar
 ├── scheduler.py       # avtomatik eslatmalar + sessiya tozalash
 ├── webapp.py          # web sayt / Mini App API (aiohttp)
+├── userbot.py         # shaxsiy eslatmalar (Telethon, ixtiyoriy)
+├── ai/                # yagona AI xizmati
+│   ├── __init__.py    # create_ai_client() — provayderni tanlaydi
+│   ├── base.py        # umumiy mantiq (prompt qurish, JSON tahlili)
+│   ├── prompts.py     # system promptlar
+│   ├── claude.py      # Anthropic Claude provayderi
+│   └── ollama.py      # mahalliy Ollama provayderi
 ├── static/
 │   └── index.html     # web interfeys (login, rahbar/xodim panel)
 ├── handlers/

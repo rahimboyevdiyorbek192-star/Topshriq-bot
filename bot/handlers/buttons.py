@@ -47,7 +47,7 @@ def main_reply_kb(is_manager: bool, webapp_url: str = "") -> ReplyKeyboardMarkup
             [KeyboardButton(text="📋 Topshiriqlar"),  KeyboardButton(text="📊 Svodka")],
             [KeyboardButton(text="📈 Reyting"),        KeyboardButton(text="📄 Excel")],
             [KeyboardButton(text="🗂 Umumlashtir"),    KeyboardButton(text="🤖 AI Suhbat")],
-            [KeyboardButton(text="💻 Kompyuter"),       KeyboardButton(text="👥 Xodimlar")],
+            [KeyboardButton(text="👥 Xodimlar"),       KeyboardButton(text="❓ Yordam")],
             [app_btn] if webapp_url else [KeyboardButton(text="❓ Yordam")],
         ]
     else:
@@ -117,13 +117,6 @@ def ai_panel_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [_btn("💬 Savol yozing (matn)",    "hint:ai_type")],
         [_btn("📊 Oxirgi topshiriq tahlili", "ai:last_task")],
-    ])
-
-
-def computer_panel_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [_btn("💡 Namuna vazifalar",     "computer:examples")],
-        [_btn("⛔ Agentni to'xtatish",   "computer:stop")],
     ])
 
 
@@ -249,23 +242,6 @@ async def btn_ai(message: Message, config: Config) -> None:
         "<code>/ai Bu hafta eng faol xodim kim?</code>\n"
         "<code>/ai 3-topshiriqni umumlashtir</code>",
         reply_markup=ai_panel_kb(),
-    )
-
-
-@router.message(F.text == "💻 Kompyuter")
-async def btn_computer(message: Message, config: Config) -> None:
-    if not (message.from_user and config.is_manager(message.from_user.id)):
-        await message.answer("⛔️ Kompyuter agenti faqat rahbar uchun.")
-        return
-    await message.answer(
-        "💻 <b>Avtonom Kompyuter Agenti</b>\n\n"
-        "AI ekraningizni ko'rib, vazifangizni bajaradi.\n\n"
-        "📝 <b>Foydalanish:</b>\n"
-        "<code>/kompyuter Chrome ochib google.com ga kir</code>\n"
-        "<code>/kompyuter Notepad ochib salom yoz</code>\n"
-        "<code>/kompyuter Ish stolini ko'rsat</code>\n\n"
-        "⚠️ To'xtatish: <code>/stop</code> yoki sichqonni ekran burchagiga olib boring.",
-        reply_markup=computer_panel_kb(),
     )
 
 
@@ -479,32 +455,6 @@ async def cb_confirm_close(
         reply_markup=back_kb("back:tasks"),
     )
     await callback.answer("✅ Yopildi.")
-
-
-@router.callback_query(F.data == "computer:stop")
-async def cb_computer_stop(callback: CallbackQuery, config: Config) -> None:
-    if not config.is_manager(callback.from_user.id):
-        await callback.answer("⛔️ Faqat rahbar.", show_alert=True)
-        return
-    from . import computer as comp_mod
-    if comp_mod._active_agent:
-        comp_mod._active_agent.stop()
-        await callback.answer("⛔ Agent to'xtatilmoqda...", show_alert=True)
-    else:
-        await callback.answer("ℹ️ Hech qanday agent ishlamayapti.", show_alert=True)
-
-
-@router.callback_query(F.data == "computer:examples")
-async def cb_computer_examples(callback: CallbackQuery) -> None:
-    await callback.answer()
-    await callback.message.answer(
-        "💡 <b>Namuna vazifalar:</b>\n\n"
-        "<code>/kompyuter Chrome ochib google.com ga kir</code>\n"
-        "<code>/kompyuter Notepad ochib Salom dunyo yoz va saqlا</code>\n"
-        "<code>/kompyuter Yangi papka yarat va nom qo'y Ish</code>\n"
-        "<code>/kompyuter Hozirgi vaqtni ko'rsat</code>\n"
-        "<code>/kompyuter Windows sozlamalarini och</code>",
-    )
 
 
 @router.callback_query(F.data == "ai:last_task")

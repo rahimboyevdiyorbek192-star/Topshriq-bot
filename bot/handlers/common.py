@@ -29,12 +29,11 @@ Shablon: Excel/Word/PPT faylni biriktiring.
 📈 <b>Reyting</b> — xodimlar samaradorligi
 📄 <b>Excel</b> — to'liq hisobot fayli
 🤖 <b>AI Suhbat</b> — AI bilan tahlil va maslahat
-💻 <b>Kompyuter</b> — kompyuter agentini boshqarish
 👥 <b>Xodimlar</b> — ro'yxat, qo'shish, o'chirish
 
 <b>Komandalar:</b>
 /svodka · /excel · /reyting · /eslatma N
-/ai savol · /umumlashtir N · /kompyuter vazifa"""
+/ai savol · /umumlashtir N"""
 
 HELP_EMPLOYEE = """\
 <b>🤖 Robot Mutaxassis — Xodim uchun</b>

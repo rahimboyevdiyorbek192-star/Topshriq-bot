@@ -477,6 +477,37 @@ class Database:
         )
         return list(await cur.fetchall())
 
+    # ---------- Faylga kirish huquqi ----------
+    async def file_access_owner(self, file_id: str) -> tuple[str, Optional[int]]:
+        """Fayl kimga tegishli ekanini aniqlaydi.
+
+        Qaytaradi:
+          ("task",       None)         — rahbar biriktirgan namuna fayl (hammaga ochiq)
+          ("submission", employee_id)  — xodim topshirgan fayl (faqat egasi + rahbar)
+          ("unknown",    None)         — bazada bunday fayl yo'q
+        """
+        cur = await self.conn.execute(
+            "SELECT 1 FROM task_files WHERE file_id = ? LIMIT 1", (file_id,)
+        )
+        if await cur.fetchone():
+            return "task", None
+
+        cur = await self.conn.execute(
+            "SELECT employee_id FROM submissions WHERE file_id = ? LIMIT 1", (file_id,)
+        )
+        row = await cur.fetchone()
+        if row:
+            return "submission", row["employee_id"]
+
+        cur = await self.conn.execute(
+            "SELECT employee_id FROM submission_files WHERE file_id = ? LIMIT 1", (file_id,)
+        )
+        row = await cur.fetchone()
+        if row:
+            return "submission", row["employee_id"]
+
+        return "unknown", None
+
     # ---------- ZIP uchun ma'lumotlar ----------
     async def get_all_task_submissions(self, task_id: int) -> list[aiosqlite.Row]:
         cur = await self.conn.execute(

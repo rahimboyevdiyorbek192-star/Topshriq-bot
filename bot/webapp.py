@@ -546,13 +546,26 @@ async def handle_submit(request: web.Request) -> web.Response:
 # ── Fayl proxy ─────────────────────────────────────────────
 
 async def handle_file_proxy(request: web.Request) -> web.Response:
-    user, _ = await _auth_full(request)
+    user, is_mgr = await _auth_full(request)
     if not user:
         return web.Response(status=401)
 
     file_id = request.match_info.get("file_id", "")
     bot     = request.app["bot"]
+    db: Database   = request.app["db"]
     config: Config = request.app["config"]
+
+    # Egalik tekshiruvi: xodim faqat namuna fayllarni va O'ZI yuborgan
+    # fayllarni yuklay oladi. Rahbar hammasini ko'ra oladi.
+    kind, owner_id = await db.file_access_owner(file_id)
+    if kind == "unknown":
+        return web.Response(status=404)
+    if kind == "submission" and not is_mgr and owner_id != user["id"]:
+        logger.warning(
+            "Ruxsatsiz fayl so'rovi: user=%s owner=%s file=%s",
+            user["id"], owner_id, file_id[:24],
+        )
+        return web.Response(status=403)
 
     try:
         tg_file  = await bot.get_file(file_id)

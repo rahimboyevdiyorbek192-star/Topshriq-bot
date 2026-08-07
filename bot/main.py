@@ -15,6 +15,7 @@ from .database import Database
 from .handlers import setup_routers
 from .middlewares import AlbumMiddleware, DependencyMiddleware
 from .scheduler import setup_scheduler
+from .ai import create_ai_client
 from .userbot import create_userbot
 
 logging.basicConfig(
@@ -47,20 +48,8 @@ async def main() -> None:
     await db.connect()
     logger.info("Ma'lumotlar bazasi ulandi: %s", config.db_path)
 
-    # AI klienti (Ollama yoki Claude)
-    ai_client = None
-    if config.use_ollama:
-        from .ai_ollama import OllamaClient
-        vision = config.ollama_vision_model or config.ollama_model
-        ai_client = OllamaClient(config.ollama_base_url, config.ollama_model, vision_model=vision)
-        logger.info("Mahalliy AI (Ollama) yoqildi: %s / %s (vision: %s)",
-                    config.ollama_base_url, config.ollama_model, vision)
-    elif config.anthropic_api_key:
-        from .ai import AIClient
-        ai_client = AIClient(config.anthropic_api_key, config.anthropic_model)
-        logger.info("Claude AI yoqildi (model: %s)", config.anthropic_model)
-    else:
-        logger.info("AI o'chirilgan (API kalit yo'q).")
+    # AI klienti — provayder .env bo'yicha avtomatik tanlanadi
+    ai_client = create_ai_client(config)
 
     # Userbot (Telethon)
     userbot = create_userbot(
@@ -127,7 +116,7 @@ async def main() -> None:
         if config.userbot_enabled:
             await userbot.stop()
         await db.close()
-        if ai_client and hasattr(ai_client, "close"):
+        if ai_client:
             await ai_client.close()
         await bot.session.close()
 
