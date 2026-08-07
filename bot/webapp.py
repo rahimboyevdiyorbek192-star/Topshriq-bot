@@ -746,26 +746,26 @@ async def handle_employees_locations(request: web.Request) -> web.Response:
         return _json({"error": "Faqat rahbar uchun"}, 403)
 
     db: Database = request.app["db"]
-    rows = await db.get_employees_with_location()
+    rows = await db.get_all_employees_location_status()
 
+    from datetime import datetime as _dt
     data = []
     for r in rows:
         loc_time = r["last_location_at"]
         if loc_time:
             try:
-                from datetime import datetime as _dt
                 loc_time = _dt.fromisoformat(loc_time).strftime("%d.%m.%Y %H:%M")
             except Exception:
                 pass
         data.append({
-            "tg_id":    r["tg_id"],
-            "name":     r["full_name"],
-            "phone":    r["login_phone"] or "—",
-            "position": r["position"] or "",
-            "lat":      r["last_lat"],
-            "lon":      r["last_lon"],
-            "last_time": loc_time or "—",
-            "active":   bool(r["active"]),
+            "tg_id":     r["tg_id"],
+            "name":      r["full_name"],
+            "phone":     r["login_phone"] or "—",
+            "position":  r["position"] or "",
+            "lat":       r["last_lat"],
+            "lon":       r["last_lon"],
+            "last_time": loc_time or None,
+            "active":    bool(r["active"]),
         })
 
     return _json({"ok": True, "data": data})

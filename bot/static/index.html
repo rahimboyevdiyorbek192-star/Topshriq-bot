@@ -707,9 +707,6 @@ function loginPage() {
         <label for="remember">Eslab qolish (7 kun)</label>
       </div>
       <button class="btn btn-primary btn-full" id="lbtn" data-act="login">Kirish</button>
-      <div style="margin-top:10px;font-size:11px;color:var(--hint);text-align:center;line-height:1.4">
-        📍 Kirish vaqtida joylashuv ma'lumoti so'raladi — ish nazorati uchun
-      </div>
     </div>
   </div>`;
 }
@@ -1265,56 +1262,75 @@ async function loadAndInitMap() {
     return;
   }
 
-  const emps = data.data || [];
+  const all  = data.data || [];
+  const withLoc = all.filter(e => e.lat !== null && e.lat !== undefined);
+  const noLoc   = all.filter(e => e.lat === null || e.lat === undefined);
 
-  if (!emps.length) {
-    wrap.innerHTML = '<p class="text-hint" style="padding:16px;text-align:center">Hech bir xodimning joylashuvi yo\'q. Xodimlar tizimga kirganda avtomatik saqlanadi.</p>';
+  if (!all.length) {
+    wrap.innerHTML = '<p class="text-hint" style="padding:16px;text-align:center">Xodimlar yo\'q.</p>';
     mapEl.style.display = 'none';
     return;
   }
-  mapEl.style.display = '';
 
-  if (typeof L === 'undefined') {
-    mapEl.innerHTML = '<p class="text-hint" style="text-align:center;padding:20px">Xarita yuklanmoqda…</p>';
+  if (!withLoc.length) {
+    mapEl.style.display = 'none';
   } else {
-    if (_leafletMap) { _leafletMap.remove(); _leafletMap = null; }
-    _leafletMap = L.map('loc-map').setView([emps[0].lat, emps[0].lon], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '© OpenStreetMap'
-    }).addTo(_leafletMap);
-    emps.forEach(e => {
-      L.marker([e.lat, e.lon]).addTo(_leafletMap)
-        .bindPopup(`<b>${esc(e.name)}</b><br>${esc(e.position || '')}<br>${esc(e.last_time)}`);
-    });
-    if (emps.length > 1) {
-      const bounds = L.latLngBounds(emps.map(e => [e.lat, e.lon]));
-      _leafletMap.fitBounds(bounds, {padding: [30, 30]});
+    mapEl.style.display = '';
+    if (typeof L === 'undefined') {
+      mapEl.innerHTML = '<p class="text-hint" style="text-align:center;padding:20px">Xarita yuklanmoqda…</p>';
+    } else {
+      if (_leafletMap) { _leafletMap.remove(); _leafletMap = null; }
+      _leafletMap = L.map('loc-map').setView([withLoc[0].lat, withLoc[0].lon], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '© OpenStreetMap'
+      }).addTo(_leafletMap);
+      withLoc.forEach(e => {
+        L.marker([e.lat, e.lon]).addTo(_leafletMap)
+          .bindPopup(`<b>${esc(e.name)}</b><br>${e.position ? esc(e.position) + '<br>' : ''}⏰ ${esc(e.last_time)}`);
+      });
+      if (withLoc.length > 1) {
+        _leafletMap.fitBounds(L.latLngBounds(withLoc.map(e => [e.lat, e.lon])), {padding:[30,30]});
+      }
     }
   }
 
-  const rows = emps.map(e => `
-    <tr>
+  const mkRow = (e, hasLoc) => `
+    <tr style="${!hasLoc ? 'background:var(--warning-bg)' : ''}">
       <td>
         <div style="font-weight:600">${esc(e.name)}</div>
         ${e.position ? `<div class="text-hint" style="font-size:12px">${esc(e.position)}</div>` : ''}
-        ${!e.active ? '<span class="badge badge-over" style="font-size:10px">Nofaol</span>' : ''}
       </td>
       <td class="hide-sm">${esc(e.phone)}</td>
-      <td style="font-size:12px;color:var(--hint)">${esc(e.last_time)}</td>
-      <td>
-        <a href="https://www.google.com/maps?q=${e.lat},${e.lon}" target="_blank"
-           style="color:var(--primary);font-size:13px;text-decoration:none">🗺️ Ko'rish</a>
-      </td>
-    </tr>`).join('');
+      <td style="font-size:12px">${hasLoc
+        ? `<span style="color:var(--hint)">${esc(e.last_time)}</span>`
+        : `<span style="color:var(--warning);font-weight:600">⚠️ Joylashuv yo'q</span>`}</td>
+      <td>${hasLoc
+        ? `<a href="https://www.google.com/maps?q=${e.lat},${e.lon}" target="_blank"
+              style="color:var(--primary);font-size:13px;text-decoration:none">🗺️ Ko'rish</a>`
+        : `<span style="color:var(--hint);font-size:12px">—</span>`}</td>
+    </tr>`;
+
+  const rows = [
+    ...withLoc.map(e => mkRow(e, true)),
+    ...noLoc.map(e  => mkRow(e, false)),
+  ].join('');
+
+  const noLocNote = noLoc.length
+    ? `<div style="margin-bottom:10px;padding:8px 12px;background:var(--warning-bg);border-radius:8px;font-size:13px;color:var(--warning)">
+         ⚠️ <b>${noLoc.length} ta xodim</b> hali tizimga kirmagan yoki joylashuvni rad etgan
+       </div>` : '';
 
   wrap.innerHTML = `
-    <div style="font-size:14px;font-weight:600;margin-bottom:10px">Xodimlar ro'yxati (${emps.length} ta)</div>
+    ${noLocNote}
+    <div style="font-size:14px;font-weight:600;margin-bottom:10px">
+      Barcha xodimlar: ${withLoc.length} joylashuv bor / ${noLoc.length} yo'q
+    </div>
     <div class="table-wrap">
       <table class="emp-table">
         <thead><tr>
           <th>Ism Sharif</th>
           <th class="hide-sm">Telefon</th>
-          <th>Oxirgi vaqt</th>
+          <th>Oxirgi kirish vaqti</th>
           <th>Xarita</th>
         </tr></thead>
         <tbody>${rows}</tbody>

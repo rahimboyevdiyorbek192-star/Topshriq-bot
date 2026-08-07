@@ -195,13 +195,14 @@ class Database:
         )
         await self.conn.commit()
 
-    async def get_employees_with_location(self) -> list[aiosqlite.Row]:
+    async def get_all_employees_location_status(self) -> list[aiosqlite.Row]:
+        """Barcha faol xodimlarni joylashuv ma'lumoti bilan qaytaradi (yo'q bo'lsa ham)."""
         cur = await self.conn.execute(
             """SELECT tg_id, full_name, login_phone, position,
                       last_lat, last_lon, last_location_at, active
                FROM employees
-               WHERE last_lat IS NOT NULL AND last_lon IS NOT NULL
-               ORDER BY last_location_at DESC"""
+               WHERE active = 1
+               ORDER BY last_location_at DESC NULLS LAST, full_name COLLATE NOCASE"""
         )
         return list(await cur.fetchall())
 
