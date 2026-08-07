@@ -71,6 +71,16 @@ CREATE TABLE IF NOT EXISTS reminders_sent (
     minutes  INTEGER NOT NULL,
     PRIMARY KEY (task_id, minutes)
 );
+
+CREATE TABLE IF NOT EXISTS location_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tg_id       INTEGER NOT NULL,
+    lat         REAL NOT NULL,
+    lon         REAL NOT NULL,
+    accuracy    REAL,
+    recorded_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_loc_hist ON location_history(tg_id, recorded_at);
 """
 
 
@@ -205,6 +215,45 @@ class Database:
                FROM employees
                WHERE active = 1
                ORDER BY last_location_at DESC NULLS LAST, full_name COLLATE NOCASE"""
+        )
+        return list(await cur.fetchall())
+
+    # ---------- Real-time joylashuv tarixi ----------
+    async def add_location_point(
+        self, tg_id: int, lat: float, lon: float, accuracy: float | None = None
+    ) -> None:
+        await self.conn.execute(
+            "INSERT INTO location_history (tg_id, lat, lon, accuracy, recorded_at) VALUES (?,?,?,?,?)",
+            (tg_id, lat, lon, accuracy, datetime.now().isoformat()),
+        )
+        await self.conn.commit()
+
+    async def get_location_history(
+        self, tg_id: int, date_str: str
+    ) -> list[aiosqlite.Row]:
+        """Berilgan sana (YYYY-MM-DD) uchun hodimning joylashuv nuqtalari."""
+        cur = await self.conn.execute(
+            """SELECT lat, lon, accuracy, recorded_at
+               FROM location_history
+               WHERE tg_id = ? AND DATE(recorded_at) = ?
+               ORDER BY recorded_at""",
+            (tg_id, date_str),
+        )
+        return list(await cur.fetchall())
+
+    async def get_all_latest_locations(self) -> list[aiosqlite.Row]:
+        """Har bir faol xodimning eng so'nggi joylashuv nuqtasi."""
+        cur = await self.conn.execute(
+            """SELECT e.tg_id, e.full_name, e.position, e.login_phone,
+                      lh.lat, lh.lon, lh.recorded_at
+               FROM employees e
+               LEFT JOIN location_history lh ON lh.id = (
+                   SELECT id FROM location_history
+                   WHERE tg_id = e.tg_id
+                   ORDER BY recorded_at DESC LIMIT 1
+               )
+               WHERE e.active = 1
+               ORDER BY lh.recorded_at DESC NULLS LAST, e.full_name"""
         )
         return list(await cur.fetchall())
 

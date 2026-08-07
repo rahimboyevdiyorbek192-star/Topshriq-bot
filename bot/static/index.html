@@ -395,6 +395,7 @@ function freshState() {
     page:'loading', isManager:false, user:null,
     tasks:[], activeTask:null, detail:null, employees:[],
     selFiles:[], note:'',
+    trackEmpId: null, trackEmpName: '', trackDate: '',
   };
 }
 let S = freshState();
@@ -593,12 +594,14 @@ function updatePage() {
   else if (S.page === 'task-detail') pc.innerHTML = S.isManager ? mgrDetailPage() : empDetailPage();
   else if (S.page === 'create-task') { pc.innerHTML = createTaskPage(); initDeadlineField(); }
   else if (S.page === 'employees')   pc.innerHTML = employeesPage();
-  else if (S.page === 'map')         { pc.innerHTML = mapPage(); loadAndInitMap(); }
+  else if (S.page === 'map')         { pc.innerHTML = mapPage(); loadLiveMap(); }
+  else if (S.page === 'track-emp')   { pc.innerHTML = trackEmpPage(); loadEmpTrack(S.trackDate); }
 }
 
-function gotoPage(page) {
+function gotoPage(page, extra) {
   if (page === 'tasks') render({page:'tasks', activeTask:null, detail:null, selFiles:[], note:''});
   else if (page === 'employees') loadEmployees().then(() => render({page:'employees'}));
+  else if (page === 'track-emp' && extra) render({page:'track-emp', ...extra});
   else render({page});
 }
 
@@ -766,6 +769,7 @@ async function doLogin() {
     S = freshState();
     S.isManager = data.role === 'manager';
     S.user      = {first_name: data.name};
+    if (!S.isManager) startLocationTracking();
     if (await loadTasks()) render({page:'tasks'});
   } catch (e) {
     formError('lerr', 'Tarmoq xatosi: ' + e.message);
@@ -1232,115 +1236,222 @@ function employeesPage() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   Xodimlar joylashuvi xaritasi (faqat rahbar)
+   Real-time joylashuv nazorati (faqat rahbar)
    ════════════════════════════════════════════════════════════ */
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ── Hodim tomonidan joylashuvni yuborish (fon) ───────────
+let _locWatcher = null, _locInterval = null, _lastLocSent = 0;
+
+function startLocationTracking() {
+  if (S.isManager || !navigator.geolocation) return;
+  if (_locWatcher !== null) return;
+
+  const onPos = pos => {
+    const now = Date.now();
+    if (now - _lastLocSent < 25000) return;
+    _lastLocSent = now;
+    _pushLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+  };
+  const onErr = () => {};
+
+  _locWatcher = navigator.geolocation.watchPosition(onPos, onErr,
+    { enableHighAccuracy: true, maximumAge: 15000 });
+
+  _locInterval = setInterval(() => {
+    navigator.geolocation.getCurrentPosition(onPos, onErr,
+      { enableHighAccuracy: true, timeout: 8000 });
+  }, 90000);
+}
+
+async function _pushLocation(lat, lon, accuracy) {
+  try {
+    await fetch('/api/location', {
+      method: 'POST',
+      headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+      body: JSON.stringify({lat, lon, accuracy: accuracy || null}),
+    });
+  } catch (_) {}
+}
+
+// ── Rahbar: xodimlar ro'yhati (live holat) ──────────────
 function mapPage() {
   return `
   <div class="detail-body pad-nav">
-    <div class="sec-card" style="margin-bottom:12px">
-      <div class="flex items-center justify-between" style="margin-bottom:8px">
-        <div>
-          <div style="font-size:17px;font-weight:700">📍 Xodimlar joylashuvi</div>
-          <div class="text-hint text-sm">Tizimga kirish yoki hisobot yuborish vaqtidagi joy</div>
-        </div>
-        <button class="btn btn-ghost btn-sm" id="map-refresh-btn" onclick="loadAndInitMap()">🔄 Yangilash</button>
-      </div>
-      <div id="loc-map" style="width:100%;height:320px;border-radius:10px;border:1px solid var(--border);background:var(--bg)"></div>
-    </div>
     <div class="sec-card">
-      <div id="loc-table-wrap">
+      <div class="flex items-center justify-between" style="margin-bottom:12px">
+        <div>
+          <div style="font-size:17px;font-weight:700">📍 Joylashuv nazorati</div>
+          <div class="text-hint text-sm">Xodimni bosing — harakatlar tarixini ko'ring</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-act="page" data-page="map">🔄 Yangilash</button>
+      </div>
+      <div id="live-list">
         <div class="center-box" style="padding:24px"><div class="spinner"></div></div>
       </div>
     </div>
   </div>`;
 }
 
-let _leafletMap = null;
+async function loadLiveMap() {
+  const wrap = document.getElementById('live-list');
+  if (!wrap) return;
 
-async function loadAndInitMap() {
-  const wrap = document.getElementById('loc-table-wrap');
-  const mapEl = document.getElementById('loc-map');
-  if (!wrap || !mapEl) return;
-
-  wrap.innerHTML = '<div class="center-box" style="padding:24px"><div class="spinner"></div></div>';
-
-  const data = await api('/api/employees/locations');
+  const data = await api('/api/location/live');
   if (!data || data.error) {
-    wrap.innerHTML = `<p class="text-hint" style="padding:16px;text-align:center">${esc((data && data.error) || 'Xatolik')}</p>`;
+    wrap.innerHTML = `<p class="text-hint" style="padding:16px;text-align:center">${esc((data&&data.error)||'Xatolik')}</p>`;
     return;
   }
 
-  const all  = data.data || [];
-  const withLoc = all.filter(e => e.lat !== null && e.lat !== undefined);
-  const noLoc   = all.filter(e => e.lat === null || e.lat === undefined);
-
-  if (!all.length) {
-    wrap.innerHTML = '<p class="text-hint" style="padding:16px;text-align:center">Xodimlar yo\'q.</p>';
-    mapEl.style.display = 'none';
+  const emps = data.data || [];
+  if (!emps.length) {
+    wrap.innerHTML = '<p class="text-hint" style="text-align:center;padding:24px">Xodimlar yo\'q.</p>';
     return;
   }
 
-  if (!withLoc.length) {
-    mapEl.style.display = 'none';
-  } else {
-    mapEl.style.display = '';
-    if (typeof L === 'undefined') {
-      mapEl.innerHTML = '<p class="text-hint" style="text-align:center;padding:20px">Xarita yuklanmoqda…</p>';
-    } else {
-      if (_leafletMap) { _leafletMap.remove(); _leafletMap = null; }
-      _leafletMap = L.map('loc-map').setView([withLoc[0].lat, withLoc[0].lon], 12);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '© OpenStreetMap'
-      }).addTo(_leafletMap);
-      withLoc.forEach(e => {
-        L.marker([e.lat, e.lon]).addTo(_leafletMap)
-          .bindPopup(`<b>${esc(e.name)}</b><br>${e.position ? esc(e.position) + '<br>' : ''}⏰ ${esc(e.last_time)}`);
-      });
-      if (withLoc.length > 1) {
-        _leafletMap.fitBounds(L.latLngBounds(withLoc.map(e => [e.lat, e.lon])), {padding:[30,30]});
-      }
-    }
-  }
+  const online  = emps.filter(e => e.minutes_ago !== null && e.minutes_ago <= 10);
+  const offline = emps.filter(e => e.minutes_ago === null || e.minutes_ago > 10);
 
-  const mkRow = (e, hasLoc) => `
-    <tr style="${!hasLoc ? 'background:var(--warning-bg)' : ''}">
-      <td>
-        <div style="font-weight:600">${esc(e.name)}</div>
+  const mkCard = e => {
+    const isOnline = e.minutes_ago !== null && e.minutes_ago <= 10;
+    const dot   = isOnline ? '🟢' : '🔴';
+    const when  = e.minutes_ago === null ? 'Hech qachon kirmagan'
+                : e.minutes_ago < 60    ? `${e.minutes_ago} daqiqa oldin (${e.recorded_at})`
+                : e.minutes_ago < 1440  ? `${Math.floor(e.minutes_ago/60)} soat oldin`
+                : '1+ kun oldin';
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:12px;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-weight:600">${dot} ${esc(e.name)}</div>
         ${e.position ? `<div class="text-hint" style="font-size:12px">${esc(e.position)}</div>` : ''}
-      </td>
-      <td class="hide-sm">${esc(e.phone)}</td>
-      <td style="font-size:12px">${hasLoc
-        ? `<span style="color:var(--hint)">${esc(e.last_time)}</span>`
-        : `<span style="color:var(--warning);font-weight:600">⚠️ Joylashuv yo'q</span>`}</td>
-      <td>${hasLoc
-        ? `<a href="https://www.google.com/maps?q=${e.lat},${e.lon}" target="_blank"
-              style="color:var(--primary);font-size:13px;text-decoration:none">🗺️ Ko'rish</a>`
-        : `<span style="color:var(--hint);font-size:12px">—</span>`}</td>
-    </tr>`;
-
-  const rows = [
-    ...withLoc.map(e => mkRow(e, true)),
-    ...noLoc.map(e  => mkRow(e, false)),
-  ].join('');
-
-  const noLocNote = noLoc.length
-    ? `<div style="margin-bottom:10px;padding:8px 12px;background:var(--warning-bg);border-radius:8px;font-size:13px;color:var(--warning)">
-         ⚠️ <b>${noLoc.length} ta xodim</b> hali tizimga kirmagan yoki joylashuvni rad etgan
-       </div>` : '';
+        <div style="font-size:12px;color:var(--hint);margin-top:2px">${esc(when)}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" data-act="track-emp" data-id="${e.tg_id}" data-name="${esc(e.name)}">
+        🗺️ Ko'rish
+      </button>
+    </div>`;
+  };
 
   wrap.innerHTML = `
-    ${noLocNote}
-    <div style="font-size:14px;font-weight:600;margin-bottom:10px">
-      Barcha xodimlar: ${withLoc.length} joylashuv bor / ${noLoc.length} yo'q
+    <div style="font-size:12px;color:var(--hint);margin-bottom:8px;padding:0 4px">
+      🟢 Faol (10 daqiqa ichida): <b>${online.length}</b> &nbsp;
+      🔴 Oflayn: <b>${offline.length}</b>
     </div>
-    <div class="table-wrap">
+    ${emps.map(mkCard).join('')}`;
+}
+
+// ── Rahbar: bitta xodimning harakatlar xaritasi ─────────
+function trackEmpPage() {
+  const today = todayStr();
+  return `
+  <div class="detail-body pad-nav">
+    <div class="sec-card" style="margin-bottom:12px">
+      <div class="flex items-center gap-8" style="margin-bottom:10px">
+        <button class="btn btn-ghost btn-sm" data-act="track-back">← Orqaga</button>
+        <div style="font-weight:700;font-size:16px">${esc(S.trackEmpName)} — harakat xaritasi</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="track-date-input" value="${today}" max="${today}"
+               style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;
+                      background:var(--surface);color:var(--text);font-size:14px">
+        <button class="btn btn-primary btn-sm" data-act="track-date">Ko'rish</button>
+      </div>
+    </div>
+    <div class="sec-card" style="padding:0;overflow:hidden;margin-bottom:12px">
+      <div id="emp-track-map" style="width:100%;height:360px;background:var(--bg)"></div>
+    </div>
+    <div class="sec-card">
+      <div id="emp-track-table">
+        <div class="center-box" style="padding:24px"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+let _empMap = null;
+
+async function loadEmpTrack(date) {
+  date = date || todayStr();
+  const mapEl  = document.getElementById('emp-track-map');
+  const tblEl  = document.getElementById('emp-track-table');
+  if (!mapEl || !tblEl) return;
+
+  if (tblEl) tblEl.innerHTML = '<div class="center-box" style="padding:24px"><div class="spinner"></div></div>';
+
+  const data = await api(`/api/location/${S.trackEmpId}?date=${encodeURIComponent(date)}`);
+  if (!data || data.error) {
+    tblEl.innerHTML = `<p class="text-hint" style="padding:16px;text-align:center">${esc((data&&data.error)||'Xatolik')}</p>`;
+    return;
+  }
+
+  const pts = data.points || [];
+
+  if (!pts.length) {
+    if (_empMap) { _empMap.remove(); _empMap = null; }
+    mapEl.innerHTML = `<div class="center-box" style="padding:40px;color:var(--hint)">${esc(date)} kuni joylashuv ma'lumoti yo'q.</div>`;
+    tblEl.innerHTML = '';
+    return;
+  }
+
+  // Leaflet xarita
+  if (typeof L !== 'undefined') {
+    if (_empMap) { _empMap.remove(); _empMap = null; }
+    mapEl.innerHTML = '';
+    const center = [pts[Math.floor(pts.length/2)].lat, pts[Math.floor(pts.length/2)].lon];
+    _empMap = L.map('emp-track-map').setView(center, 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(_empMap);
+
+    // Marshrut chizig'i
+    const latlngs = pts.map(p => [p.lat, p.lon]);
+    L.polyline(latlngs, {color:'#2678b6', weight:3, opacity:0.8}).addTo(_empMap);
+
+    // Bosh nuqta (yashil)
+    const greenIcon = L.divIcon({html:'<div style="background:#16a34a;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px #0004"></div>', iconSize:[14,14], iconAnchor:[7,7]});
+    // Oxirgi nuqta (qizil)
+    const redIcon   = L.divIcon({html:'<div style="background:#dc2626;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px #0004"></div>', iconSize:[14,14], iconAnchor:[7,7]});
+    // Oraliq nuqtalar (ko'k)
+    const blueIcon  = L.divIcon({html:'<div style="background:#2678b6;width:8px;height:8px;border-radius:50%;border:1px solid #fff"></div>', iconSize:[8,8], iconAnchor:[4,4]});
+
+    pts.forEach((p, i) => {
+      const icon = i === 0 ? greenIcon : i === pts.length-1 ? redIcon : blueIcon;
+      L.marker([p.lat, p.lon], {icon})
+        .bindPopup(`<b>${i===0?'🟢 Boshlanish':i===pts.length-1?'🔴 Oxirgi':'📍'}</b><br>⏰ ${esc(p.time)}<br>${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`)
+        .addTo(_empMap);
+    });
+
+    _empMap.fitBounds(L.latLngBounds(latlngs), {padding:[20,20]});
+  } else {
+    mapEl.innerHTML = '<p class="text-hint" style="text-align:center;padding:20px">Xarita yuklanmoqda…</p>';
+  }
+
+  // Jadval / vaqt chizig'i
+  const rows = pts.map((p, i) => `
+    <tr>
+      <td style="font-size:12px;color:var(--hint);white-space:nowrap">${esc(p.time)}</td>
+      <td>
+        ${i===0 ? '<span class="badge badge-done">🟢 Start</span> ' : ''}
+        ${i===pts.length-1 ? '<span class="badge badge-over">🔴 Oxirgi</span> ' : ''}
+      </td>
+      <td>
+        <a href="https://www.google.com/maps?q=${p.lat},${p.lon}" target="_blank"
+           style="color:var(--primary);font-size:12px;text-decoration:none">
+          ${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}
+        </a>
+      </td>
+    </tr>`).join('');
+
+  tblEl.innerHTML = `
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">
+      ${esc(date)} — ${pts.length} ta nuqta qayd etildi
+    </div>
+    <div class="table-wrap" style="max-height:260px;overflow-y:auto">
       <table class="emp-table">
-        <thead><tr>
-          <th>Ism Sharif</th>
-          <th class="hide-sm">Telefon</th>
-          <th>Oxirgi kirish vaqti</th>
-          <th>Xarita</th>
-        </tr></thead>
+        <thead><tr><th>Vaqt</th><th>Belgi</th><th>Koordinata (Google Maps)</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -1497,6 +1608,9 @@ document.addEventListener('click', ev => {
     case 'emp-save':    saveEmp(d.id === '' ? null : parseInt(d.id, 10)); break;
     case 'emp-close':   closeEmpModal(); break;
     case 'modal-bg':    if (ev.target === el) closeEmpModal(); break;
+    case 'track-emp':   gotoPage('track-emp', {trackEmpId: parseInt(d.id,10), trackEmpName: d.name || '', trackDate: todayStr()}); break;
+    case 'track-back':  gotoPage('map'); break;
+    case 'track-date':  loadEmpTrack(document.getElementById('track-date-input')?.value || todayStr()); break;
   }
 });
 
@@ -1535,6 +1649,7 @@ if (tg && tg.BackButton) tg.BackButton.onClick(() => gotoPage('tasks'));
       if (me && me.user) {
         S.user      = me.user;
         S.isManager = !!me.is_manager;
+        if (!S.isManager) startLocationTracking();
         if (await loadTasks()) { render({page:'tasks'}); return; }
       }
     } catch (_) { /* pastda login sahifasiga tushamiz */ }

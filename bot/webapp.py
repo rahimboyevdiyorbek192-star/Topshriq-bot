@@ -757,6 +757,111 @@ async def handle_employees_delete(request: web.Request) -> web.Response:
     return _json({"ok": True})
 
 
+# ── Real-time joylashuv ────────────────────────────────────
+
+async def handle_location_post(request: web.Request) -> web.Response:
+    """Hodim joriy joylashuvini yuboradi (30 soniyada bir)."""
+    user, is_mgr = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if is_mgr or user["id"] == 0:
+        return _json({"ok": True})  # Rahbardan saqlamaymiz
+
+    try:
+        data = await request.json()
+    except Exception:
+        return _json({"error": "JSON kerak"}, 400)
+
+    try:
+        lat = float(data["lat"])
+        lon = float(data["lon"])
+    except (KeyError, TypeError, ValueError):
+        return _json({"error": "lat/lon kerak"}, 400)
+
+    accuracy = None
+    try:
+        accuracy = float(data["accuracy"]) if data.get("accuracy") is not None else None
+    except (TypeError, ValueError):
+        pass
+
+    db: Database = request.app["db"]
+    await db.add_location_point(user["id"], lat, lon, accuracy)
+    await db.update_employee_location(user["id"], lat, lon)
+    return _json({"ok": True})
+
+
+async def handle_location_live(request: web.Request) -> web.Response:
+    """Barcha xodimlarning eng so'nggi joylashuvi (rahbar uchun)."""
+    user, is_mgr = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if not is_mgr:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+
+    from datetime import datetime as _dt, timezone as _tz
+    db: Database = request.app["db"]
+    rows = await db.get_all_latest_locations()
+    now  = _dt.now()
+    data = []
+    for r in rows:
+        rec = r["recorded_at"]
+        minutes_ago = None
+        rec_fmt = None
+        if rec:
+            try:
+                dt = _dt.fromisoformat(rec)
+                if dt.tzinfo:
+                    dt = dt.replace(tzinfo=None)
+                diff = now - dt
+                minutes_ago = int(diff.total_seconds() / 60)
+                rec_fmt = dt.strftime("%H:%M")
+            except Exception:
+                pass
+        data.append({
+            "tg_id":       r["tg_id"],
+            "name":        r["full_name"],
+            "position":    r["position"] or "",
+            "lat":         r["lat"],
+            "lon":         r["lon"],
+            "recorded_at": rec_fmt,
+            "minutes_ago": minutes_ago,
+        })
+    return _json({"ok": True, "data": data})
+
+
+async def handle_location_history(request: web.Request) -> web.Response:
+    """Bitta xodimning berilgan sanaga ko'ra joylashuv tarixi (rahbar uchun)."""
+    user, is_mgr = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if not is_mgr:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+
+    tg_id = int(request.match_info.get("tg_id", "0"))
+    from datetime import date as _date
+    date_str = request.rel_url.query.get("date", _date.today().isoformat())
+
+    db: Database = request.app["db"]
+    rows = await db.get_location_history(tg_id, date_str)
+
+    from datetime import datetime as _dt
+    points = []
+    for r in rows:
+        t = r["recorded_at"]
+        t_fmt = None
+        if t:
+            try:
+                t_fmt = _dt.fromisoformat(t).strftime("%H:%M:%S")
+            except Exception:
+                pass
+        points.append({
+            "lat":  r["lat"],
+            "lon":  r["lon"],
+            "time": t_fmt or t,
+        })
+    return _json({"ok": True, "points": points})
+
+
 # ── Xodimlar joylashuvi (rahbar uchun) ────────────────────
 
 async def handle_employees_locations(request: web.Request) -> web.Response:
@@ -820,6 +925,10 @@ def create_webapp(config: Config, db: Database, bot) -> web.Application:
     app.router.add_get("/api/employees/locations",          handle_employees_locations)
     app.router.add_put("/api/employees/{tg_id}",            handle_employees_update)
     app.router.add_delete("/api/employees/{tg_id}",         handle_employees_delete)
+
+    app.router.add_post("/api/location",                    handle_location_post)
+    app.router.add_get("/api/location/live",                handle_location_live)
+    app.router.add_get("/api/location/{tg_id}",             handle_location_history)
 
     if STATIC_DIR.exists():
         app.router.add_static("/static", STATIC_DIR, show_index=False)
