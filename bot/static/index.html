@@ -408,6 +408,14 @@ function esc(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+/* EXIF sanasini "2024:08:07 14:30:00" → "07.08.2024 14:30" ko'rinishiga o'tkazadi */
+function exifDateStr(exif) {
+  if (!exif) return '';
+  const m = exif.match(/^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2})/);
+  if (!m) return exif;
+  return `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}`;
+}
+
 function fileIcon(name, kind) {
   if (!name && kind === 'photo') return '🖼️';
   const ext = String(name || '').split('.').pop().toLowerCase();
@@ -870,17 +878,27 @@ function mgrDetailPage() {
   } else if (!S.detail.submissions.length) {
     subs = '<p class="text-hint text-sm">Hali hech kim topshirmagan</p>';
   } else {
-    subs = S.detail.submissions.map(s => `
+    subs = S.detail.submissions.map(s => {
+      const exif = exifDateStr(s.exif_date);
+      const exifHtml = exif
+        ? `<div style="font-size:10px;color:var(--hint);margin-top:2px">📷 Olingan: ${esc(exif)}</div>`
+        : '';
+      const oldHtml = s.is_old_photo
+        ? '<div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:2px">⚠️ Eski rasm — 24 soatdan oldin olingan</div>'
+        : '';
+      return `
       <div class="sub-item">
         <div class="sub-avatar">${esc(initials(s.full_name))}</div>
         <div class="sub-info">
           <div class="sub-name">${esc(s.full_name)}</div>
           <div class="sub-time">${esc(fmtDate(s.submitted_at))}${s.note ? ' · ' + esc(String(s.note).slice(0,40)) : ''}</div>
+          ${exifHtml}${oldHtml}
         </div>
         ${s.file_id
           ? `<button class="btn btn-ghost btn-sm" data-act="file" data-fid="${esc(s.file_id)}" data-fname="${esc(s.file_name || 'fayl')}">⬇️</button>`
           : '<span class="badge badge-wait">Faqat izoh</span>'}
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   return `
@@ -950,8 +968,14 @@ function empDetailPage() {
       <div class="upload-area" id="uarea">
         <input type="file" id="finput" multiple>
         <span class="upload-icon">📁</span>
-        <span class="upload-lbl">Fayl tanlash</span>
-        <span class="upload-hint">Word, Excel, PDF, Rasm · Bir nechta mumkin · Maksimum 50 MB</span>
+        <span class="upload-lbl">Fayl yoki rasm tanlash</span>
+        <span class="upload-hint">Word, Excel, PDF, JPG/JPEG · Bir nechta mumkin · Maksimum 50 MB</span>
+      </div>
+      <div style="margin-top:6px;display:flex;justify-content:center">
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+          📷 Kamera bilan rasm olish
+          <input id="finput-cam" type="file" accept="image/jpeg" capture="camera" style="display:none">
+        </label>
       </div>
       <div class="sel-files" id="sfiles"></div>
       <textarea class="note-area" id="narea" rows="3"
@@ -1329,7 +1353,8 @@ document.addEventListener('click', ev => {
 });
 
 document.addEventListener('change', ev => {
-  if (ev.target.id === 'finput') onFilesPicked(ev.target.files);
+  if (ev.target.id === 'finput' || ev.target.id === 'finput-cam')
+    onFilesPicked(ev.target.files);
 });
 
 document.addEventListener('input', ev => {

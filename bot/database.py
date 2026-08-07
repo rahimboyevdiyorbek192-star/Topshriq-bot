@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS submissions (
     note         TEXT,
     file_id      TEXT,
     file_name    TEXT,
+    exif_date    TEXT,                   -- EXIF DateTimeOriginal (faqat JPG/JPEG uchun)
     submitted_at TEXT NOT NULL,
     UNIQUE (task_id, employee_id),
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS submission_files (
     file_id     TEXT NOT NULL,
     file_name   TEXT,
     file_kind   TEXT,
+    exif_date   TEXT,                    -- EXIF DateTimeOriginal (faqat JPG/JPEG uchun)
     added_at    TEXT NOT NULL,
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
@@ -91,6 +93,8 @@ class Database:
             "ALTER TABLE employees ADD COLUMN login_phone TEXT",
             "ALTER TABLE employees ADD COLUMN password_hash TEXT",
             "ALTER TABLE employees ADD COLUMN position TEXT",
+            "ALTER TABLE submissions ADD COLUMN exif_date TEXT",
+            "ALTER TABLE submission_files ADD COLUMN exif_date TEXT",
         ]:
             try:
                 await self._conn.execute(sql)
@@ -257,6 +261,7 @@ class Database:
         note: str | None,
         file_id: str | None,
         file_name: str | None,
+        exif_date: str | None = None,
     ) -> bool:
         """Yangi topshirilgan ish qo'shadi. Agar allaqachon topshirilgan bo'lsa yangilaydi.
         Yangi topshiriq bo'lsa True qaytaradi."""
@@ -270,20 +275,20 @@ class Database:
             await self.conn.execute(
                 """
                 UPDATE submissions
-                SET message_id = ?, note = ?, file_id = ?, file_name = ?, submitted_at = ?
+                SET message_id = ?, note = ?, file_id = ?, file_name = ?, exif_date = ?, submitted_at = ?
                 WHERE id = ?
                 """,
-                (message_id, note, file_id, file_name, now, existing["id"]),
+                (message_id, note, file_id, file_name, exif_date, now, existing["id"]),
             )
             await self.conn.commit()
             return False
         await self.conn.execute(
             """
             INSERT INTO submissions
-                (task_id, employee_id, message_id, note, file_id, file_name, submitted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (task_id, employee_id, message_id, note, file_id, file_name, exif_date, submitted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, employee_id, message_id, note, file_id, file_name, now),
+            (task_id, employee_id, message_id, note, file_id, file_name, exif_date, now),
         )
         await self.conn.commit()
         return True
@@ -334,15 +339,16 @@ class Database:
         return list(await cur.fetchall())
 
     async def add_submission_file(
-        self, task_id: int, employee_id: int, file_id: str, file_name: str | None, file_kind: str = "document"
+        self, task_id: int, employee_id: int, file_id: str, file_name: str | None,
+        file_kind: str = "document", exif_date: str | None = None
     ) -> None:
         """Topshiriqning qo'shimcha faylini saqlaydi."""
         await self.conn.execute(
             """
-            INSERT INTO submission_files (task_id, employee_id, file_id, file_name, file_kind, added_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO submission_files (task_id, employee_id, file_id, file_name, file_kind, exif_date, added_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, employee_id, file_id, file_name, file_kind, datetime.now().isoformat()),
+            (task_id, employee_id, file_id, file_name, file_kind, exif_date, datetime.now().isoformat()),
         )
         await self.conn.commit()
 

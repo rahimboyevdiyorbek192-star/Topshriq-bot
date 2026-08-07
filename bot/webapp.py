@@ -55,6 +55,42 @@ def _unique_arcname(folder: str, fname: str, used: set[str]) -> str:
     return arc
 
 
+# ── Rasm tekshiruvi (EXIF) ────────────────────────────────
+def _extract_exif_date(data: bytes, filename: str) -> str | None:
+    """JPG/JPEG rasimidan EXIF DateTimeOriginal sanani oladi."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ("jpg", "jpeg"):
+        return None
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(data))
+        exif = img.getexif()
+        if not exif:
+            return None
+        for tag_id in (36867, 36868, 306):   # DateTimeOriginal, DateTimeDigitized, DateTime
+            val = exif.get(tag_id)
+            if val:
+                return str(val)
+    except Exception:
+        pass
+    return None
+
+
+def _is_old_photo(exif_str: str | None, submitted_at: str) -> bool:
+    """EXIF sana topshirish vaqtidan 24 soatdan oldin bo'lsa True qaytaradi."""
+    if not exif_str:
+        return False
+    try:
+        from datetime import datetime as _dt, timedelta as _td
+        exif_dt = _dt.strptime(exif_str, "%Y:%m:%d %H:%M:%S")
+        sub_dt  = _dt.fromisoformat(submitted_at)
+        if sub_dt.tzinfo:
+            sub_dt = sub_dt.replace(tzinfo=None)
+        return (sub_dt - exif_dt) > _td(hours=24)
+    except Exception:
+        return False
+
+
 # ── initData tekshirish ────────────────────────────────────
 def _validate_init_data(init_data: str, bot_token: str) -> dict | None:
     if not init_data:
@@ -285,6 +321,8 @@ async def handle_task_detail(request: web.Request) -> web.Response:
                 "file_name":    s["file_name"],
                 "note":         s["note"],
                 "submitted_at": s["submitted_at"],
+                "exif_date":    s["exif_date"],
+                "is_old_photo": _is_old_photo(s["exif_date"], s["submitted_at"] or ""),
             }
             for s in submissions
         ],
@@ -455,7 +493,7 @@ async def handle_submit(request: web.Request) -> web.Response:
     # keyin kelishi mumkin, u holda caption'da "#None" chiqib qolardi.
     task_id_raw: str | None = None
     note: str | None        = None
-    pending: list[tuple[str, bytes]] = []
+    pending: list[tuple[str, bytes, str | None]] = []  # (fname, data, exif_date)
 
     try:
         if (request.content_type or "").startswith("multipart/"):
@@ -466,9 +504,10 @@ async def handle_submit(request: web.Request) -> web.Response:
                 elif field.name == "note":
                     note = (await field.read(decode=True)).decode("utf-8", "ignore")[:1000]
                 elif field.name in ("file", "files", "files[]"):
-                    data = await field.read()
-                    if data:
-                        pending.append((field.filename or "fayl", data))
+                    fdata = await field.read()
+                    if fdata:
+                        fname = field.filename or "fayl"
+                        pending.append((fname, fdata, _extract_exif_date(fdata, fname)))
         else:
             # Faylsiz (faqat izohli) topshirish oddiy forma sifatida ham kelishi mumkin
             form        = await request.post()
@@ -499,27 +538,29 @@ async def handle_submit(request: web.Request) -> web.Response:
         await db.add_employee(user_id, full_name, user.get("username"))
 
     # ── 3. Fayllarni Telegram'ga yuborish ─────────────────
-    uploaded: list[tuple[str, str]] = []
+    uploaded: list[tuple[str, str, str | None]] = []   # (file_id, fname, exif_date)
+    msg_ids_to_delete: list[int] = []
     send_chat = config.execution_group_id or (
         config.manager_ids[0] if config.manager_ids else None
     )
     if pending and send_chat:
         from aiogram.types import BufferedInputFile
         uname = f"@{user['username']}" if user.get("username") else full_name
-        for idx, (fname, data) in enumerate(pending):
+        for idx, (fname, fdata, exif_d) in enumerate(pending):
             caption = (
                 f"📱 <b>Mini App topshiriq</b>\n👤 {uname}\n📋 #{task_id}"
                 if idx == 0 else None
             )
             try:
                 sent = await bot.send_document(
-                    send_chat, BufferedInputFile(data, filename=fname), caption=caption
+                    send_chat, BufferedInputFile(fdata, filename=fname), caption=caption
                 )
             except Exception as exc:
                 logger.error("Fayl Telegram'ga yuborilmadi (%s): %s", fname, exc)
                 return _json({"error": f"Fayl yuborilmadi: {fname}"}, 502)
             if sent and sent.document:
-                uploaded.append((sent.document.file_id, fname))
+                uploaded.append((sent.document.file_id, fname, exif_d))
+                msg_ids_to_delete.append(sent.message_id)
 
     # ── 4. Bazaga yozish ──────────────────────────────────
     try:
@@ -528,12 +569,20 @@ async def handle_submit(request: web.Request) -> web.Response:
             note=(note or "").strip() or "Mini App orqali yuborildi",
             file_id=uploaded[0][0] if uploaded else None,
             file_name=uploaded[0][1] if uploaded else None,
+            exif_date=uploaded[0][2] if uploaded else None,
         )
-        for fid, fname in uploaded[1:]:
-            await db.add_submission_file(task_id, user_id, fid, fname)
+        for fid, fname, exif_d in uploaded[1:]:
+            await db.add_submission_file(task_id, user_id, fid, fname, exif_date=exif_d)
     except Exception as exc:
         logger.error("Submit bazaga yozilmadi: %s", exc, exc_info=True)
         return _json({"error": "Ma\'lumotni saqlab bo\'lmadi"}, 500)
+
+    # ── 5. Guruhni toza saqlash: saqlagandan keyin xabarlarni o'chiramiz ─
+    for mid in msg_ids_to_delete:
+        try:
+            await bot.delete_message(send_chat, mid)
+        except Exception:
+            pass   # o'chirish huquqi bo'lmasa yoki xabar topilmasa muammo emas
 
     submitted = await db.submitted_employee_ids(task_id)
     return _json({
