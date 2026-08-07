@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Topshriq Bot</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#000);font-size:15px}
+#app{min-height:100dvh;display:flex;flex-direction:column}
+
+/* ── Header ── */
+.header{position:sticky;top:0;z-index:100;background:var(--tg-theme-bg-color,#fff);border-bottom:1px solid var(--tg-theme-hint-color,#ccc);padding:10px 16px 8px}
+.header-top{display:flex;align-items:center;gap:10px}
+.header-back{background:none;border:none;color:var(--tg-theme-link-color,#2678b6);font-size:22px;cursor:pointer;padding:0 6px 0 0;line-height:1}
+.header-icon{font-size:26px;line-height:1}
+.header-titles{flex:1;min-width:0}
+.header-title{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.header-sub{font-size:12px;color:var(--tg-theme-hint-color,#888);margin-top:1px}
+
+/* ── Task List ── */
+.task-list{flex:1;padding:12px 12px 24px;display:flex;flex-direction:column;gap:10px}
+.task-card{background:var(--tg-theme-secondary-bg-color,#f4f4f5);border-radius:14px;padding:14px 16px;cursor:pointer;transition:opacity .15s;-webkit-user-select:none;user-select:none}
+.task-card:active{opacity:.7}
+.task-card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px}
+.task-num{font-size:11px;color:var(--tg-theme-hint-color,#888);font-weight:600;white-space:nowrap}
+.task-badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0}
+.badge-done{background:#dcfce7;color:#16a34a}
+.badge-wait{background:#fef3c7;color:#d97706}
+.badge-over{background:#fee2e2;color:#dc2626}
+.task-title{font-size:15px;font-weight:600;line-height:1.3;margin-bottom:8px}
+.task-meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--tg-theme-hint-color,#888)}
+.task-progress-wrap{margin-top:8px}
+.task-progress-bar{height:5px;background:var(--tg-theme-hint-color,#ccc);border-radius:3px;overflow:hidden;opacity:.35}
+.task-progress-fill{height:100%;background:var(--tg-theme-button-color,#2678b6);border-radius:3px;transition:width .4s ease}
+.progress-fill-green{background:#22c55e}
+.progress-fill-yellow{background:#f59e0b}
+.progress-fill-red{background:#ef4444}
+.task-progress-text{font-size:11px;color:var(--tg-theme-hint-color,#888);margin-top:3px}
+
+/* ── Empty / Error / Loading ── */
+.center-box{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:40px 20px;text-align:center}
+.center-box .icon{font-size:48px;line-height:1}
+.center-box p{color:var(--tg-theme-hint-color,#888);font-size:14px;max-width:260px;line-height:1.5}
+.spinner{width:36px;height:36px;border:3px solid var(--tg-theme-hint-color,#ccc);border-top-color:var(--tg-theme-button-color,#2678b6);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Task Detail ── */
+.detail-body{flex:1;padding:14px 14px 100px;display:flex;flex-direction:column;gap:14px}
+.info-card{background:var(--tg-theme-secondary-bg-color,#f4f4f5);border-radius:14px;padding:14px 16px}
+.info-card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--tg-theme-hint-color,#888);margin-bottom:8px}
+.info-row{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:4px}
+.info-row:last-child{margin-bottom:0}
+.info-row span:first-child{font-size:16px;line-height:1;flex-shrink:0}
+.deadline-red{color:#ef4444;font-weight:600}
+.deadline-yellow{color:#f59e0b;font-weight:600}
+.deadline-green{color:#22c55e;font-weight:600}
+
+/* Task description */
+.desc-text{font-size:14px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+
+/* File list */
+.file-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--tg-theme-bg-color,#fff);border-radius:10px;margin-bottom:6px;cursor:pointer;transition:opacity .15s}
+.file-item:last-child{margin-bottom:0}
+.file-item:active{opacity:.6}
+.file-icon{font-size:22px;flex-shrink:0}
+.file-info{flex:1;min-width:0}
+.file-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-type{font-size:11px;color:var(--tg-theme-hint-color,#888);margin-top:1px}
+.file-dl{color:var(--tg-theme-link-color,#2678b6);font-size:18px}
+
+/* ── Upload Section ── */
+.upload-section{display:flex;flex-direction:column;gap:10px}
+.my-submitted{display:flex;align-items:center;gap:10px;padding:12px 14px;background:#dcfce7;border-radius:12px;margin-bottom:4px}
+.my-submitted-icon{font-size:22px}
+.my-submitted-text{flex:1;min-width:0}
+.my-submitted-label{font-size:13px;font-weight:600;color:#16a34a}
+.my-submitted-fname{font-size:12px;color:#15803d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.resubmit-note{font-size:12px;color:var(--tg-theme-hint-color,#888);margin-top:-4px}
+
+.upload-area{border:2px dashed var(--tg-theme-hint-color,#ccc);border-radius:14px;padding:20px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;transition:border-color .2s,background .2s;text-align:center;position:relative}
+.upload-area.has-files{border-color:var(--tg-theme-button-color,#2678b6);background:color-mix(in srgb,var(--tg-theme-button-color,#2678b6) 6%,transparent)}
+.upload-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-icon{font-size:32px}
+.upload-label{font-size:14px;font-weight:500;color:var(--tg-theme-link-color,#2678b6)}
+.upload-hint{font-size:12px;color:var(--tg-theme-hint-color,#888)}
+.selected-files{display:flex;flex-direction:column;gap:6px}
+.sel-file{display:flex;align-items:center;gap:8px;background:var(--tg-theme-secondary-bg-color,#f4f4f5);border-radius:8px;padding:8px 10px}
+.sel-file-name{flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sel-file-size{font-size:11px;color:var(--tg-theme-hint-color,#888);white-space:nowrap}
+.sel-file-del{background:none;border:none;color:var(--tg-theme-hint-color,#888);cursor:pointer;font-size:16px;padding:0 2px;line-height:1}
+
+/* ── Bottom button ── */
+.bottom-btn-wrap{position:fixed;bottom:0;left:0;right:0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:var(--tg-theme-bg-color,#fff);border-top:1px solid var(--tg-theme-hint-color,#ddd)}
+.btn-primary{width:100%;padding:14px;border:none;border-radius:12px;background:var(--tg-theme-button-color,#2678b6);color:var(--tg-theme-button-text-color,#fff);font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:opacity .15s}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary:not(:disabled):active{opacity:.8}
+
+/* ── Progress overlay ── */
+.upload-progress{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:999}
+.upload-progress-box{background:var(--tg-theme-bg-color,#fff);border-radius:16px;padding:28px 32px;display:flex;flex-direction:column;align-items:center;gap:14px;min-width:200px}
+.upload-progress-text{font-size:14px;font-weight:500;color:var(--tg-theme-text-color,#000)}
+
+/* ── Success ── */
+.success-overlay{position:fixed;inset:0;background:var(--tg-theme-bg-color,#fff);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:998;animation:fadeIn .3s}
+@keyframes fadeIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+.success-icon{font-size:72px;animation:popIn .4s .1s both}
+@keyframes popIn{from{transform:scale(0)}to{transform:scale(1)}}
+.success-title{font-size:20px;font-weight:700}
+.success-sub{font-size:14px;color:var(--tg-theme-hint-color,#888);text-align:center;max-width:240px;line-height:1.5}
+</style>
+</head>
+<body>
+<div id="app"><div class="center-box"><div class="spinner"></div></div></div>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
+
+// ── State ─────────────────────────────────────────────────────
+let _tasks      = [];
+let _isManager  = false;
+let _user       = null;
+let _view       = 'list';   // 'list' | 'detail'
+let _taskId     = null;
+let _selFiles   = [];       // FileList items
+
+// ── Utils ─────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const app = () => document.getElementById('app');
+
+function fileIcon(name, kind) {
+  if (!name && kind === 'photo') return '🖼️';
+  const ext = (name || '').split('.').pop().toLowerCase();
+  const map = {xlsx:'📊',xls:'📊',docx:'📄',doc:'📄',pptx:'📑',ppt:'📑',pdf:'📋',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',zip:'🗜️',rar:'🗜️',txt:'📝'};
+  return map[ext] || (kind === 'photo' ? '🖼️' : '📎');
+}
+function fileTypeName(name, kind) {
+  if (!name && kind === 'photo') return 'Rasm';
+  const ext = (name || '').split('.').pop().toUpperCase();
+  return ext || 'Fayl';
+}
+function fmtSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+function fmtDeadline(iso) {
+  if (!iso) return { text: 'Muddat belgilanmagan', cls: '' };
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = d - now;
+  const absDiff = Math.abs(diff);
+  const days  = Math.floor(absDiff / 86400000);
+  const hours = Math.floor((absDiff % 86400000) / 3600000);
+  const mins  = Math.floor((absDiff % 3600000) / 60000);
+
+  const dateStr = d.toLocaleDateString('uz-UZ', {day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});
+
+  if (diff < 0) {
+    return { text: `🔴 ${dateStr} — muddat o'tdi`, cls: 'deadline-red' };
+  }
+  if (days > 0) {
+    return { text: `${dateStr} · ${days} kun ${hours} soat`, cls: days <= 1 ? 'deadline-yellow' : 'deadline-green' };
+  }
+  return { text: `${dateStr} · ${hours} soat ${mins} daqiqa`, cls: 'deadline-yellow' };
+}
+function progressCls(pct) {
+  if (pct >= 80) return 'progress-fill-green';
+  if (pct >= 40) return 'progress-fill-yellow';
+  return 'progress-fill-red';
+}
+
+// ── API ───────────────────────────────────────────────────────
+async function apiFetch(path, opts = {}) {
+  const headers = { 'X-Telegram-Init-Data': tg.initData || '', ...(opts.headers || {}) };
+  const res = await fetch(path, { ...opts, headers });
+  return res.json();
+}
+
+async function loadTasks() {
+  const data = await apiFetch('/api/tasks');
+  if (data.error) throw new Error(data.error);
+  _tasks     = data.tasks || [];
+  _isManager = !!data.is_manager;
+  _user      = data.user || null;
+}
+
+async function submitTask(taskId, files, note) {
+  const fd = new FormData();
+  fd.append('task_id', taskId);
+  if (note) fd.append('note', note);
+  for (const f of files) fd.append('files[]', f);
+
+  const res = await fetch('/api/submit', {
+    method: 'POST',
+    headers: { 'X-Telegram-Init-Data': tg.initData || '' },
+    body: fd,
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+// ── Render: Task List ─────────────────────────────────────────
+function renderList() {
+  _view   = 'list';
+  _taskId = null;
+  _selFiles = [];
+  tg.BackButton.hide();
+
+  const name = _user ? (_user.first_name || 'Xodim') : 'Xodim';
+  const role = _isManager ? '👔 Rahbar' : '👤 Xodim';
+
+  if (!_tasks.length) {
+    app().innerHTML = `
+      <div class="header">
+        <div class="header-top">
+          <span class="header-icon">🏛️</span>
+          <div class="header-titles">
+            <div class="header-title">Xonqa Yoshlar Agentligi</div>
+            <div class="header-sub">Salom, ${name}! ${role}</div>
+          </div>
+        </div>
+      </div>
+      <div class="center-box">
+        <div class="icon">📭</div>
+        <p>Hozircha ochiq topshiriqlar yo'q</p>
+      </div>`;
+    return;
+  }
+
+  const cards = _tasks.map(t => {
+    const pct = t.total_count > 0 ? Math.round(t.done_count / t.total_count * 100) : 0;
+    const dl  = fmtDeadline(t.deadline);
+    const badge = t.submitted_by_me
+      ? `<span class="task-badge badge-done">✅ Topshirdim</span>`
+      : (dl.cls === 'deadline-red'
+          ? `<span class="task-badge badge-over">🔴 Muddat o'tdi</span>`
+          : `<span class="task-badge badge-wait">⏳ Kutilmoqda</span>`);
+
+    return `
+      <div class="task-card" onclick="showDetail(${t.id})">
+        <div class="task-card-header">
+          <span class="task-num">#${t.id}</span>
+          ${badge}
+        </div>
+        <div class="task-title">${escHtml(t.title)}</div>
+        <div class="task-meta">
+          <span>📅 ${dl.text.split('·')[0].trim()}</span>
+          <span>👥 ${t.done_count}/${t.total_count}</span>
+        </div>
+        <div class="task-progress-wrap">
+          <div class="task-progress-bar">
+            <div class="task-progress-fill ${progressCls(pct)}" style="width:${pct}%"></div>
+          </div>
+          <div class="task-progress-text">${pct}% bajarildi</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  app().innerHTML = `
+    <div class="header">
+      <div class="header-top">
+        <span class="header-icon">🏛️</span>
+        <div class="header-titles">
+          <div class="header-title">Xonqa Yoshlar Agentligi</div>
+          <div class="header-sub">Salom, ${name}! ${role}</div>
+        </div>
+      </div>
+    </div>
+    <div class="task-list">${cards}</div>`;
+}
+
+// ── Render: Task Detail ───────────────────────────────────────
+function showDetail(taskId) {
+  _taskId   = taskId;
+  _selFiles = [];
+  _view     = 'detail';
+
+  const t = _tasks.find(x => x.id === taskId);
+  if (!t) return;
+
+  tg.BackButton.show();
+  tg.BackButton.onClick(() => { renderList(); });
+
+  const dl   = fmtDeadline(t.deadline);
+  const pct  = t.total_count > 0 ? Math.round(t.done_count / t.total_count * 100) : 0;
+
+  const filesHtml = t.files.length ? t.files.map(f => `
+    <div class="file-item" onclick="downloadFile('${f.file_id}', '${escHtml(f.file_name)}')">
+      <span class="file-icon">${fileIcon(f.file_name, f.kind)}</span>
+      <div class="file-info">
+        <div class="file-name">${escHtml(f.file_name || 'Fayl')}</div>
+        <div class="file-type">${fileTypeName(f.file_name, f.kind)}</div>
+      </div>
+      <span class="file-dl">⬇️</span>
+    </div>`).join('')
+    : `<div style="font-size:13px;color:var(--tg-theme-hint-color,#888)">Fayl biriktirilmagan</div>`;
+
+  const submittedHtml = t.submitted_by_me && t.my_submission ? `
+    <div class="my-submitted">
+      <span class="my-submitted-icon">✅</span>
+      <div class="my-submitted-text">
+        <div class="my-submitted-label">Topshirildi!</div>
+        ${t.my_submission.file_name ? `<div class="my-submitted-fname">📎 ${escHtml(t.my_submission.file_name)}</div>` : ''}
+      </div>
+    </div>
+    <div class="resubmit-note">Qayta yuborish uchun yangi fayl tanlang</div>` : '';
+
+  app().innerHTML = `
+    <div class="header">
+      <div class="header-top">
+        <button class="header-back" onclick="renderList()">‹</button>
+        <div class="header-titles">
+          <div class="header-title">#${t.id} ${escHtml(t.title)}</div>
+          <div class="header-sub">👥 ${t.done_count}/${t.total_count} · ${pct}% bajarildi</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-body">
+
+      ${t.description ? `
+      <div class="info-card">
+        <div class="info-card-title">📝 Topshiriq</div>
+        <div class="desc-text">${escHtml(t.description)}</div>
+      </div>` : ''}
+
+      <div class="info-card">
+        <div class="info-card-title">📅 Muddat va holat</div>
+        <div class="info-row"><span>📅</span><span class="${dl.cls}">${dl.text}</span></div>
+        <div class="info-row"><span>👥</span><span>${t.done_count} ta xodim topshirdi (${pct}%)</span></div>
+      </div>
+
+      <div class="info-card">
+        <div class="info-card-title">📎 Namuna fayllar (boss yuborgan)</div>
+        ${filesHtml}
+      </div>
+
+      <div class="info-card upload-section" id="upload-section">
+        <div class="info-card-title">📤 Mening topshiriqim</div>
+        ${submittedHtml}
+        <div class="upload-area" id="upload-area" onclick="triggerFileInput()">
+          <input type="file" id="file-input" multiple accept="*/*" style="display:none" onchange="onFilesSelected(this.files)">
+          <span class="upload-icon">📁</span>
+          <span class="upload-label">Fayl tanlash</span>
+          <span class="upload-hint">Word, Excel, PPT, PDF, Rasm · Bir nechta fayl mumkin</span>
+        </div>
+        <div class="selected-files" id="selected-files"></div>
+      </div>
+
+    </div>
+
+    <div class="bottom-btn-wrap">
+      <button class="btn-primary" id="submit-btn" onclick="doSubmit()" disabled>
+        📤 Topshiriqni yuborish
+      </button>
+    </div>`;
+}
+
+function triggerFileInput() {
+  const inp = document.getElementById('file-input');
+  if (inp) inp.click();
+}
+
+function onFilesSelected(files) {
+  _selFiles = Array.from(files);
+  renderSelectedFiles();
+}
+
+function removeFile(idx) {
+  _selFiles.splice(idx, 1);
+  renderSelectedFiles();
+}
+
+function renderSelectedFiles() {
+  const wrap = document.getElementById('selected-files');
+  const area  = document.getElementById('upload-area');
+  const btn   = document.getElementById('submit-btn');
+  if (!wrap) return;
+
+  if (_selFiles.length === 0) {
+    wrap.innerHTML = '';
+    if (area) area.classList.remove('has-files');
+    if (btn)  btn.disabled = true;
+    return;
+  }
+
+  if (area) area.classList.add('has-files');
+  if (btn)  btn.disabled = false;
+
+  wrap.innerHTML = _selFiles.map((f, i) => `
+    <div class="sel-file">
+      <span>${fileIcon(f.name, '')}</span>
+      <span class="sel-file-name">${escHtml(f.name)}</span>
+      <span class="sel-file-size">${fmtSize(f.size)}</span>
+      <button class="sel-file-del" onclick="removeFile(${i})">✕</button>
+    </div>`).join('');
+}
+
+async function doSubmit() {
+  if (!_selFiles.length) {
+    tg.showAlert('Avval fayl tanlang!');
+    return;
+  }
+
+  // Progress overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'upload-progress';
+  overlay.innerHTML = `
+    <div class="upload-progress-box">
+      <div class="spinner"></div>
+      <div class="upload-progress-text">Yuklanmoqda… ${_selFiles.length} ta fayl</div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  try {
+    const result = await submitTask(_taskId, _selFiles, '');
+
+    // Update local state
+    const t = _tasks.find(x => x.id === _taskId);
+    if (t) {
+      t.submitted_by_me = true;
+      t.done_count      = result.done_count;
+      t.total_count     = result.total_count;
+      t.my_submission   = { file_name: _selFiles[0]?.name, note: '', submitted_at: new Date().toISOString() };
+    }
+
+    overlay.remove();
+    showSuccess(result.done_count, result.total_count);
+
+  } catch (err) {
+    overlay.remove();
+    tg.showAlert('Xato: ' + err.message);
+  }
+}
+
+function showSuccess(done, total) {
+  const el = document.createElement('div');
+  el.className = 'success-overlay';
+  el.innerHTML = `
+    <div class="success-icon">✅</div>
+    <div class="success-title">Topshiriq yuborildi!</div>
+    <div class="success-sub">${done}/${total} xodim bajargan</div>`;
+  document.body.appendChild(el);
+
+  tg.HapticFeedback.notificationOccurred('success');
+
+  setTimeout(() => {
+    el.remove();
+    renderList();
+  }, 2200);
+}
+
+function downloadFile(fileId, name) {
+  tg.showAlert('Fayl yuklanmoqda…');
+  const a = document.createElement('a');
+  a.href = `/api/file/${fileId}?init=${encodeURIComponent(tg.initData || '')}`;
+  a.download = name || 'fayl';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+// ── Download auth via query param fallback ─────────────────────
+// (some browsers strip custom headers on anchor downloads)
+// The server also checks ?init= param as fallback
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ──────────────────────────────────────────────────────
+(async () => {
+  try {
+    await loadTasks();
+    renderList();
+  } catch (e) {
+    app().innerHTML = `
+      <div class="center-box">
+        <div class="icon">⚠️</div>
+        <p>Yuklab bo'lmadi<br><small>${e.message}</small></p>
+      </div>`;
+  }
+})();
+</script>
+</body>
+</html>

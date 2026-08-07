@@ -50,6 +50,17 @@ CREATE TABLE IF NOT EXISTS submissions (
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS submission_files (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id     INTEGER NOT NULL,
+    employee_id INTEGER NOT NULL,
+    file_id     TEXT NOT NULL,
+    file_name   TEXT,
+    file_kind   TEXT,
+    added_at    TEXT NOT NULL,
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS reminders_sent (
     task_id  INTEGER NOT NULL,
     minutes  INTEGER NOT NULL,
@@ -315,6 +326,27 @@ class Database:
             GROUP BY e.tg_id
             ORDER BY done_count DESC, e.full_name
             """
+        )
+        return list(await cur.fetchall())
+
+    async def add_submission_file(
+        self, task_id: int, employee_id: int, file_id: str, file_name: str | None, file_kind: str = "document"
+    ) -> None:
+        """Topshiriqning qo'shimcha faylini saqlaydi."""
+        await self.conn.execute(
+            """
+            INSERT INTO submission_files (task_id, employee_id, file_id, file_name, file_kind, added_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (task_id, employee_id, file_id, file_name, file_kind, datetime.now().isoformat()),
+        )
+        await self.conn.commit()
+
+    async def get_submission_files(self, task_id: int, employee_id: int) -> list[aiosqlite.Row]:
+        """Xodimning topshiriq uchun yuborgan barcha fayllarini qaytaradi."""
+        cur = await self.conn.execute(
+            "SELECT * FROM submission_files WHERE task_id=? AND employee_id=? ORDER BY id",
+            (task_id, employee_id),
         )
         return list(await cur.fetchall())
 

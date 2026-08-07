@@ -15,6 +15,7 @@ from aiogram.types import (
     Message,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
+    WebAppInfo,
 )
 
 from ..config import Config
@@ -33,18 +34,28 @@ router = Router()
 #  REPLY KEYBOARD — pastdagi doimiy tugmalar
 # ══════════════════════════════════════════════════════════════
 
-def main_reply_kb(is_manager: bool) -> ReplyKeyboardMarkup:
+def main_reply_kb(is_manager: bool, webapp_url: str = "") -> ReplyKeyboardMarkup:
     """Asosiy menyu — chat pastida doim ko'rinadi."""
+    app_btn = (
+        KeyboardButton(text="📱 Mini App", web_app=WebAppInfo(url=webapp_url))
+        if webapp_url
+        else KeyboardButton(text="❓ Yordam")
+    )
+
     if is_manager:
         buttons = [
             [KeyboardButton(text="📋 Topshiriqlar"),  KeyboardButton(text="📊 Svodka")],
             [KeyboardButton(text="📈 Reyting"),        KeyboardButton(text="📄 Excel")],
             [KeyboardButton(text="🗂 Umumlashtir"),    KeyboardButton(text="🤖 AI Suhbat")],
             [KeyboardButton(text="💻 Kompyuter"),       KeyboardButton(text="👥 Xodimlar")],
-            [KeyboardButton(text="❓ Yordam")],
+            [app_btn] if webapp_url else [KeyboardButton(text="❓ Yordam")],
         ]
     else:
         buttons = [
+            [app_btn],
+            [KeyboardButton(text="📌 Ishlarim"),     KeyboardButton(text="📋 Topshiriqlar")],
+            [KeyboardButton(text="🤖 AI Yordam"),    KeyboardButton(text="❓ Yordam")],
+        ] if webapp_url else [
             [KeyboardButton(text="📌 Ishlarim"),     KeyboardButton(text="📋 Topshiriqlar")],
             [KeyboardButton(text="🤖 AI Yordam"),    KeyboardButton(text="❓ Yordam")],
         ]
@@ -562,7 +573,7 @@ async def cmd_menu(message: Message, config: Config) -> None:
     is_mgr = bool(message.from_user and config.is_manager(message.from_user.id))
     await message.answer(
         "🏠 <b>Asosiy menyu</b>\n\nQuyidagi tugmalardan foydalaning 👇",
-        reply_markup=main_reply_kb(is_mgr),
+        reply_markup=main_reply_kb(is_mgr, config.webapp_url),
     )
 
 

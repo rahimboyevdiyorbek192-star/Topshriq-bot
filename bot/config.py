@@ -60,6 +60,11 @@ class Config:
     tg_api_hash: str = ""
     tg_userbot_session: str = ""
 
+    # Mini App (Telegram Web App)
+    webapp_url: str = ""       # HTTPS URL (masalan: https://topshriq.example.com)
+    webapp_host: str = "0.0.0.0"
+    webapp_port: int = 8080
+
     @property
     def ai_enabled(self) -> bool:
         if self.use_ollama:
@@ -76,6 +81,10 @@ class Config:
     @property
     def userbot_enabled(self) -> bool:
         return bool(self.tg_api_id and self.tg_api_hash and self.tg_userbot_session)
+
+    @property
+    def webapp_enabled(self) -> bool:
+        return bool(self.webapp_url)
 
     def is_tasks_source(self, chat_id: int) -> bool:
         """Ushbu chat topshiriqlar manbai ekanligini tekshiradi."""
@@ -118,4 +127,7 @@ def load_config() -> Config:
         tg_api_id=_parse_int(os.getenv("TG_API_ID")),
         tg_api_hash=os.getenv("TG_API_HASH", "").strip(),
         tg_userbot_session=os.getenv("TG_USERBOT_SESSION", "").strip(),
+        webapp_url=os.getenv("WEBAPP_URL", "").strip(),
+        webapp_host=os.getenv("WEBAPP_HOST", "0.0.0.0").strip(),
+        webapp_port=int(os.getenv("WEBAPP_PORT", "8080")),
     )

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from aiohttp import web as aiohttp_web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -88,6 +89,20 @@ async def main() -> None:
 
     dp.include_router(setup_routers())
 
+    # Mini App web server
+    webapp_runner = None
+    if config.webapp_enabled:
+        from .webapp import create_webapp
+        webapp     = create_webapp(config, db, bot)
+        webapp_runner = aiohttp_web.AppRunner(webapp)
+        await webapp_runner.setup()
+        site = aiohttp_web.TCPSite(webapp_runner, config.webapp_host, config.webapp_port)
+        await site.start()
+        logger.info("Mini App server ishga tushdi: http://%s:%s  (WEBAPP_URL=%s)",
+                    config.webapp_host, config.webapp_port, config.webapp_url)
+    else:
+        logger.info("Mini App o'chirilgan (WEBAPP_URL sozlanmagan).")
+
     scheduler = setup_scheduler(bot, db, config, userbot=userbot)
     scheduler.start()
     logger.info("Scheduler ishga tushdi (har 5 daqiqada tekshiradi).")
@@ -107,6 +122,8 @@ async def main() -> None:
         )
     finally:
         scheduler.shutdown(wait=False)
+        if webapp_runner:
+            await webapp_runner.cleanup()
         if config.userbot_enabled:
             await userbot.stop()
         await db.close()

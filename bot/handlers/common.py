@@ -3,7 +3,12 @@ from __future__ import annotations
 
 from aiogram import Router
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    WebAppInfo,
+)
 
 from ..config import Config
 from .buttons import main_reply_kb
@@ -51,19 +56,29 @@ Fayl turlari: Excel, Word, PPT, PDF, rasm (jadval surati)
 /mening · /ruyxatdan_otish · /ai savol"""
 
 
+def _webapp_kb(url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="📱 Mini App ochish", web_app=WebAppInfo(url=url))
+    ]])
+
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, config: Config) -> None:
     is_mgr = bool(message.from_user and config.is_manager(message.from_user.id))
     name   = (message.from_user.first_name or "Xush kelibsiz") if message.from_user else "Xush kelibsiz"
     role   = "rahbar" if is_mgr else "xodim"
 
+    inline_kb = _webapp_kb(config.webapp_url) if config.webapp_enabled else None
+
     await message.answer(
         f"👋 Salom, <b>{name}</b>!\n\n"
         f"🤖 <b>Robot Mutaxassis</b> — topshiriqlar boshqaruv tizimiga xush kelibsiz.\n"
         f"Siz <b>{role}</b> sifatida kirgansiz.\n\n"
-        "Quyidagi tugmalardan foydalaning 👇",
-        reply_markup=main_reply_kb(is_mgr),
+        + ("📱 <b>Mini App</b> orqali topshiriqlarni ko'rib, fayl yuklashingiz mumkin!\n\n" if config.webapp_enabled else "")
+        + "Quyidagi tugmalardan foydalaning 👇",
+        reply_markup=inline_kb,
     )
+    await message.answer("Asosiy menyu 👇", reply_markup=main_reply_kb(is_mgr, config.webapp_url))
 
 
 @router.message(Command("help"))
@@ -71,7 +86,7 @@ async def cmd_help(message: Message, config: Config) -> None:
     is_mgr = bool(message.from_user and config.is_manager(message.from_user.id))
     await message.answer(
         HELP_MANAGER if is_mgr else HELP_EMPLOYEE,
-        reply_markup=main_reply_kb(is_mgr),
+        reply_markup=main_reply_kb(is_mgr, config.webapp_url),
     )
 
 
