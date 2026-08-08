@@ -271,18 +271,25 @@ async def handle_tasks(request: web.Request) -> web.Response:
     result       = []
 
     for t in tasks:
-        submitted_ids = await db.submitted_employee_ids(t["id"])
-        task_files    = await db.get_task_files(t["id"])
-        my_sub        = await db.get_submission(t["id"], user_id)
+        submitted_ids  = await db.submitted_employee_ids(t["id"])
+        task_files     = await db.get_task_files(t["id"])
+        my_sub         = await db.get_submission(t["id"], user_id)
+        req_files      = t["required_files"] if "required_files" in t.keys() else 0
+        my_file_count  = await db.count_employee_total_files(t["id"], user_id) if not is_manager else 0
+        submitted_me   = (
+            user_id in submitted_ids and (req_files == 0 or my_file_count >= req_files)
+        )
 
         result.append({
             "id":              t["id"],
             "title":           t["title"],
             "description":     t["description"] or "",
             "deadline":        t["deadline"] or "",
-            "submitted_by_me": user_id in submitted_ids,
+            "submitted_by_me": submitted_me,
             "done_count":      len(submitted_ids),
             "total_count":     total_emp,
+            "required_files":  req_files,
+            "my_file_count":   my_file_count,
             "files": [
                 {
                     "file_id":   f["file_id"],
@@ -322,10 +329,11 @@ async def handle_task_detail(request: web.Request) -> web.Response:
 
     return _json({
         "task": {
-            "id":          task["id"],
-            "title":       task["title"],
-            "description": task["description"] or "",
-            "deadline":    task["deadline"] or "",
+            "id":             task["id"],
+            "title":          task["title"],
+            "description":    task["description"] or "",
+            "deadline":       task["deadline"] or "",
+            "required_files": task["required_files"] if "required_files" in task.keys() else 0,
         },
         "submissions": [
             {
@@ -422,11 +430,15 @@ async def handle_task_zip(request: web.Request) -> web.Response:
 
             for s in submissions:
                 if s["file_id"]:
-                    folder = _safe_filename(s["full_name"] or str(s["employee_id"]))
+                    folder = _safe_filename(
+                        s["position"] or s["full_name"] or str(s["employee_id"])
+                    )
                     await _dl(s["file_id"], s["file_name"], folder)
 
             for ef in extra_files:
-                folder = _safe_filename(ef["full_name"] or str(ef["employee_id"]))
+                folder = _safe_filename(
+                    ef["position"] or ef["full_name"] or str(ef["employee_id"])
+                )
                 await _dl(ef["file_id"], ef["file_name"], folder)
 
     buf.seek(0)
@@ -452,9 +464,14 @@ async def handle_history(request: web.Request) -> web.Response:
     result       = []
 
     for t in tasks:
-        submitted_ids = await db.submitted_employee_ids(t["id"])
-        task_files    = await db.get_task_files(t["id"])
-        my_sub        = await db.get_submission(t["id"], user_id) if not is_manager else None
+        submitted_ids  = await db.submitted_employee_ids(t["id"])
+        task_files     = await db.get_task_files(t["id"])
+        my_sub         = await db.get_submission(t["id"], user_id) if not is_manager else None
+        req_files      = t["required_files"] if "required_files" in t.keys() else 0
+        my_file_count  = await db.count_employee_total_files(t["id"], user_id) if not is_manager else 0
+        submitted_me   = (
+            user_id in submitted_ids and (req_files == 0 or my_file_count >= req_files)
+        )
 
         result.append({
             "id":              t["id"],
@@ -465,7 +482,9 @@ async def handle_history(request: web.Request) -> web.Response:
             "created_at":      t["created_at"],
             "done_count":      len(submitted_ids),
             "total_count":     total_emp,
-            "submitted_by_me": user_id in submitted_ids,
+            "submitted_by_me": submitted_me,
+            "required_files":  req_files,
+            "my_file_count":   my_file_count,
             "files": [
                 {"file_id": f["file_id"], "file_name": f["file_name"] or "fayl", "kind": f["file_kind"]}
                 for f in task_files
@@ -508,17 +527,47 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
     if not is_mgr:
         return _json({"error": "Faqat rahbar uchun"}, 403)
 
-    try:
-        data = await request.json()
-    except Exception:
-        return _json({"error": "JSON kerak"}, 400)
+    title: str = ""
+    description: str | None = None
+    deadline: str | None = None
+    required_files: int = 0
+    pending: list[tuple[str, bytes]] = []  # (fname, data)
 
-    title = (data.get("title") or "").strip()
+    try:
+        ct = request.content_type or ""
+        if ct.startswith("multipart/"):
+            reader = await request.multipart()
+            async for field in reader:
+                if field.name == "title":
+                    title = (await field.read(decode=True)).decode("utf-8", "ignore").strip()
+                elif field.name == "description":
+                    description = (await field.read(decode=True)).decode("utf-8", "ignore").strip() or None
+                elif field.name == "deadline":
+                    deadline = (await field.read(decode=True)).decode("utf-8", "ignore").strip() or None
+                elif field.name == "required_files":
+                    raw = (await field.read(decode=True)).decode("utf-8", "ignore").strip()
+                    try:
+                        required_files = max(0, int(raw))
+                    except (TypeError, ValueError):
+                        required_files = 0
+                elif field.name in ("file", "files", "files[]"):
+                    fdata = await field.read()
+                    if fdata:
+                        pending.append((field.filename or "fayl", fdata))
+        else:
+            data = await request.json()
+            title = (data.get("title") or "").strip()
+            description = (data.get("description") or "").strip() or None
+            deadline = (data.get("deadline") or "").strip() or None
+            try:
+                required_files = max(0, int(data.get("required_files") or 0))
+            except (TypeError, ValueError):
+                required_files = 0
+    except Exception:
+        return _json({"error": "So'rovni o'qib bo'lmadi"}, 400)
+
     if not title:
         return _json({"error": "Topshiriq nomi majburiy"}, 400)
-
-    description = (data.get("description") or "").strip() or None
-    deadline    = (data.get("deadline") or "").strip() or None
 
     db: Database   = request.app["db"]
     config: Config = request.app["config"]
@@ -530,7 +579,27 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
         created_by=user.get("id"),
         src_chat_id=None,
         src_msg_id=None,
+        required_files=required_files,
     )
+
+    # Namuna fayllarni Telegram'ga yuborish va task_files ga saqlash
+    if pending:
+        bot = request.app["bot"]
+        send_chat = config.execution_group_id or (
+            config.manager_ids[0] if config.manager_ids else None
+        )
+        if send_chat:
+            from aiogram.types import BufferedInputFile
+            for idx, (fname, fdata) in enumerate(pending):
+                try:
+                    caption = f"📎 <b>Topshiriq #{task_id} namuna fayl</b>" if idx == 0 else None
+                    sent = await bot.send_document(
+                        send_chat, BufferedInputFile(fdata, filename=fname), caption=caption
+                    )
+                    if sent and sent.document:
+                        await db.add_task_file(task_id, sent.document.file_id, fname, "document")
+                except Exception as exc:
+                    logger.warning("Namuna fayl Telegram'ga yuborilmadi (%s): %s", fname, exc)
 
     try:
         bot = request.app["bot"]
@@ -543,6 +612,8 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
             )
             if description:
                 text += f"\n📝 {description[:200]}"
+            if required_files:
+                text += f"\n📂 Talab: {required_files} ta fayl"
             await bot.send_message(config.execution_group_id, text)
     except Exception as exc:
         logger.warning("Topshiriq e'lon xato: %s", exc)

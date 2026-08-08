@@ -113,6 +113,7 @@ class Database:
             "ALTER TABLE employees ADD COLUMN last_location_at TEXT",
             "ALTER TABLE submissions ADD COLUMN submit_lat REAL",
             "ALTER TABLE submissions ADD COLUMN submit_lon REAL",
+            "ALTER TABLE tasks ADD COLUMN required_files INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await self._conn.execute(sql)
@@ -268,12 +269,14 @@ class Database:
         created_by: int | None,
         src_chat_id: int | None,
         src_msg_id: int | None,
+        required_files: int = 0,
     ) -> int:
         cur = await self.conn.execute(
             """
             INSERT INTO tasks
-                (title, description, deadline, created_by, src_chat_id, src_msg_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (title, description, deadline, created_by, src_chat_id, src_msg_id,
+                 required_files, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 title,
@@ -282,6 +285,7 @@ class Database:
                 created_by,
                 src_chat_id,
                 src_msg_id,
+                required_files,
                 datetime.now().isoformat(),
             ),
         )
@@ -628,7 +632,7 @@ class Database:
     # ---------- ZIP uchun ma'lumotlar ----------
     async def get_all_task_submissions(self, task_id: int) -> list[aiosqlite.Row]:
         cur = await self.conn.execute(
-            """SELECT s.*, e.full_name, e.username
+            """SELECT s.*, e.full_name, e.username, e.position
                FROM submissions s
                LEFT JOIN employees e ON e.tg_id = s.employee_id
                WHERE s.task_id=?
@@ -639,13 +643,26 @@ class Database:
 
     async def get_all_submission_files_for_task(self, task_id: int) -> list[aiosqlite.Row]:
         cur = await self.conn.execute(
-            """SELECT sf.*, e.full_name
+            """SELECT sf.*, e.full_name, e.position
                FROM submission_files sf
                LEFT JOIN employees e ON e.tg_id = sf.employee_id
                WHERE sf.task_id=?""",
             (task_id,),
         )
         return list(await cur.fetchall())
+
+    async def count_employee_total_files(self, task_id: int, employee_id: int) -> int:
+        """Xodim topshirgan umumiy fayllar soni (submissions + submission_files)."""
+        cur = await self.conn.execute(
+            """SELECT
+                 (SELECT CASE WHEN file_id IS NOT NULL THEN 1 ELSE 0 END
+                  FROM submissions WHERE task_id=? AND employee_id=? LIMIT 1) +
+                 (SELECT COUNT(*) FROM submission_files WHERE task_id=? AND employee_id=?)
+               AS total""",
+            (task_id, employee_id, task_id, employee_id),
+        )
+        row = await cur.fetchone()
+        return (row["total"] or 0) if row else 0
 
     # ---------- KPI ----------
 

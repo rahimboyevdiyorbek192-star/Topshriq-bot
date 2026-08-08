@@ -146,6 +146,7 @@ button,input,select,textarea{font-family:inherit}
 .prog-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden}
 .prog-fill{height:100%;border-radius:3px;transition:width .4s ease}
 .pg-green{background:#22c55e}.pg-yellow{background:#f59e0b}.pg-red{background:#ef4444}
+.pg-done{background:#22c55e}.pg-part{background:#f59e0b}
 .prog-text{font-size:11px;color:var(--hint);margin-top:4px}
 
 /* ── Batafsil ────────────────────────────────────────────── */
@@ -470,7 +471,7 @@ function freshState() {
   return {
     page:'loading', isManager:false, user:null,
     tasks:[], activeTask:null, detail:null, employees:[],
-    selFiles:[], note:'',
+    selFiles:[], ctFiles:[], note:'',
     trackEmpId: null, trackEmpName: '', trackDate: '',
     history: [],
     histCalYear: new Date().getFullYear(),
@@ -919,11 +920,18 @@ function taskListPage() {
   const cards = S.tasks.map(t => {
     const p  = pct(t.done_count, t.total_count);
     const dl = deadlineInfo(t.deadline);
-    const badge = t.submitted_by_me
-      ? '<span class="badge badge-done">✅ Topshirdim</span>'
-      : dl.cls === 'dl-red'
-        ? '<span class="badge badge-over">🔴 Kechikdi</span>'
-        : '<span class="badge badge-wait">⏳ Kutilmoqda</span>';
+    const req = t.required_files || 0;
+    const myCount = t.my_file_count || 0;
+    let badge;
+    if (t.submitted_by_me) {
+      badge = '<span class="badge badge-done">✅ Topshirdim</span>';
+    } else if (!S.isManager && req > 0 && myCount > 0) {
+      badge = `<span class="badge badge-wait">⏳ ${myCount}/${req} fayl</span>`;
+    } else if (dl.cls === 'dl-red') {
+      badge = '<span class="badge badge-over">🔴 Kechikdi</span>';
+    } else {
+      badge = '<span class="badge badge-wait">⏳ Kutilmoqda</span>';
+    }
     return `
     <div class="task-card" data-act="task" data-id="${t.id}">
       <div class="tc-head"><span class="tc-num">#${t.id}</span>${badge}</div>
@@ -1082,6 +1090,24 @@ function empDetailPage() {
   if (!t) return '<div class="center-box"><p>Topshiriq topilmadi</p></div>';
 
   const p = pct(t.done_count, t.total_count);
+  const req = t.required_files || 0;
+  const myCount = t.my_file_count || 0;
+
+  let fileProgressHtml = '';
+  if (req > 0) {
+    const fp = Math.min(100, Math.round(myCount / req * 100));
+    const fpCls = myCount >= req ? 'pg-done' : myCount > 0 ? 'pg-part' : '';
+    fileProgressHtml = `
+    <div class="sec-card" style="margin-bottom:0">
+      <div class="flex items-center justify-between" style="margin-bottom:6px">
+        <span style="font-size:13px;font-weight:600">📂 Fayl talabi</span>
+        <span style="font-size:13px;color:${myCount>=req?'var(--success)':'var(--warning)'};font-weight:700">${myCount}/${req}</span>
+      </div>
+      <div class="prog-bar"><div class="prog-fill ${fpCls}" style="width:${fp}%"></div></div>
+      <div class="form-hint" style="margin-top:4px">${myCount>=req?'✅ Yetarli fayl yuklandi':'Topshiriq bajarildi sanalishi uchun yana '+(req-myCount)+' ta fayl yuklang'}</div>
+    </div>`;
+  }
+
   const banner = t.submitted_by_me ? `
     <div class="submitted-banner">
       <span class="sb-icon">✅</span>
@@ -1097,6 +1123,8 @@ function empDetailPage() {
   <div class="detail-body pad-nav">
     ${backBtnHtml}
     ${taskHeaderHtml(t, `<span class="text-hint">👥 ${t.done_count}/${t.total_count} (${p}%)</span>`)}
+
+    ${fileProgressHtml}
 
     <div class="sec-card">
       <div class="sec-title">📎 Rahbar fayllari</div>
@@ -1243,6 +1271,21 @@ function createTaskPage() {
         <input class="form-input" id="ct-dl" type="datetime-local">
         <div class="form-hint">Bo'sh qoldirsangiz topshiriq muddatsiz ochiq qoladi</div>
       </div>
+      <div class="form-group">
+        <label class="form-label" for="ct-reqfiles">Talab qilinadigan fayllar soni</label>
+        <input class="form-input" id="ct-reqfiles" type="number" min="0" max="100" value="0" placeholder="0">
+        <div class="form-hint">Hodim shu qadar fayl yuklasa topshiriq bajarildi hisoblanadi (0 = cheklov yo'q)</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Namuna fayllar (ixtiyoriy)</label>
+        <div class="upload-area" id="ct-uarea" style="padding:14px 12px">
+          <input type="file" id="ct-finput" multiple style="display:none">
+          <span class="upload-icon" style="font-size:22px">📎</span>
+          <span class="upload-lbl">Namuna fayl biriktirish</span>
+          <span class="upload-hint">Hodimlar ko'rishi uchun shablon yoki namuna fayllar</span>
+        </div>
+        <div class="sel-files" id="ct-sfiles"></div>
+      </div>
       <div class="form-error" id="ct-err"></div>
       <button class="btn btn-primary btn-full" id="ct-btn" data-act="create-task">✅ Topshiriq yaratish</button>
     </div>
@@ -1256,24 +1299,58 @@ function initDeadlineField() {
   d.setDate(d.getDate() + 1);
   d.setHours(18, 0, 0, 0);
   inp.value = localInputValue(d);        // mahalliy vaqt, UTC emas
+
+  // Namuna fayl yuklash maydonini sozlash
+  S.ctFiles = [];
+  const area   = document.getElementById('ct-uarea');
+  const finput = document.getElementById('ct-finput');
+  if (area && finput) {
+    area.addEventListener('click', () => finput.click());
+    finput.addEventListener('change', () => {
+      const arr = Array.prototype.slice.call(finput.files || []);
+      S.ctFiles = S.ctFiles.concat(arr);
+      renderCtFiles();
+    });
+  }
+}
+
+function renderCtFiles() {
+  const wrap = document.getElementById('ct-sfiles');
+  const area = document.getElementById('ct-uarea');
+  if (!wrap) return;
+  if (area) area.classList.toggle('has-files', S.ctFiles.length > 0);
+  wrap.innerHTML = (S.ctFiles || []).map((f, i) => `
+    <div class="sel-file">
+      <span>${fileIcon(f.name, '')}</span>
+      <span class="sel-fname">${esc(f.name)}</span>
+      <span class="sel-fsize">${fsize(f.size)}</span>
+      <button class="sel-rm" data-act="ctfile-rm" data-i="${i}">✕</button>
+    </div>`).join('');
 }
 
 async function doCreateTask() {
-  const title = ((document.getElementById('ct-title') || {}).value || '').trim();
-  const desc  = ((document.getElementById('ct-desc')  || {}).value || '').trim();
-  const dlRaw =  (document.getElementById('ct-dl')    || {}).value || '';
-  const btn   = document.getElementById('ct-btn');
+  const title   = ((document.getElementById('ct-title')    || {}).value || '').trim();
+  const desc    = ((document.getElementById('ct-desc')     || {}).value || '').trim();
+  const dlRaw   =  (document.getElementById('ct-dl')       || {}).value || '';
+  const reqRaw  =  (document.getElementById('ct-reqfiles') || {}).value || '0';
+  const btn     = document.getElementById('ct-btn');
 
   if (!title) { formError('ct-err', 'Topshiriq nomini kiriting'); return; }
 
   if (btn) { btn.disabled = true; btn.textContent = 'Saqlanmoqda…'; }
   formError('ct-err', '');
   try {
-    const body = {title, description: desc};
-    if (dlRaw) body.deadline = localToIso(dlRaw);
-    const data = await api('/api/tasks', {method:'POST', body});
+    const fd = new FormData();
+    fd.append('title', title);
+    if (desc) fd.append('description', desc);
+    if (dlRaw) fd.append('deadline', localToIso(dlRaw));
+    fd.append('required_files', String(Math.max(0, parseInt(reqRaw, 10) || 0)));
+    (S.ctFiles || []).forEach(f => fd.append('files[]', f, f.name));
+
+    const data = await api('/api/tasks', {method:'POST', body: fd});
     if (!data) return;
     if (data.error) throw new Error(data.error);
+    S.ctFiles = [];
     if (await loadTasks()) { toast('✅ Topshiriq yaratildi!'); render({page:'tasks'}); }
   } catch (e) {
     formError('ct-err', e.message);
@@ -1821,7 +1898,10 @@ function renderHistList() {
       const dl=deadlineInfo(t.deadline);
       const isOpen=t.status==='open';
       const statusBadge=isOpen?'<span class="badge badge-wait">⏳ Ochiq</span>':'<span class="badge" style="background:var(--border);color:var(--hint)">⬛ Yopilgan</span>';
-      const myBadge=t.submitted_by_me?'<span class="badge badge-done" style="font-size:10px">✅ Topshirdim</span>':(!S.isManager?'<span class="badge badge-over" style="font-size:10px">❌ Topshirmadim</span>':'');
+      const req2=t.required_files||0; const mc2=t.my_file_count||0;
+      const myBadge=t.submitted_by_me
+        ?'<span class="badge badge-done" style="font-size:10px">✅ Topshirdim</span>'
+        :(!S.isManager?(req2>0&&mc2>0?`<span class="badge badge-wait" style="font-size:10px">⏳ ${mc2}/${req2} fayl</span>`:'<span class="badge badge-over" style="font-size:10px">❌ Topshirmadim</span>'):'');
       const p=pct(t.done_count,t.total_count);
       const dlHtml=t.deadline?`<span class="${dl.cls||''}">📅 ${esc(dl.date)}</span>`:'<span class="text-hint">Muddatsiz</span>';
       let dlBtn='';
@@ -2138,6 +2218,7 @@ document.addEventListener('click', ev => {
     case 'file':        dlFile(d.fid, d.fname); break;
     case 'zip':         dlZip(parseInt(d.id, 10)); break;
     case 'rmfile':      removeFile(parseInt(d.i, 10)); break;
+    case 'ctfile-rm':  { S.ctFiles = (S.ctFiles||[]).filter((_,ii)=>ii!==parseInt(d.i,10)); renderCtFiles(); break; }
     case 'submit':      doSubmit(); break;
     case 'create-task': doCreateTask(); break;
     case 'login':       doLogin(); break;
