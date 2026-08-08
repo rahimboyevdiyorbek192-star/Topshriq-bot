@@ -1195,16 +1195,12 @@ function empDetailPage() {
           <div class="my-file-acts">
             <button class="btn btn-ghost btn-xs" data-act="dl-myfile"
               data-tid="${t.id}" data-rtype="${esc(f.rec_type)}" data-rid="${f.rec_id}"
-              title="Yuklab olish">⬇️</button>
-            <button class="btn btn-ghost btn-xs" data-act="replace-myfile"
-              data-tid="${t.id}" data-rtype="${esc(f.rec_type)}" data-rid="${f.rec_id}"
-              data-fname="${esc(f.file_name)}" title="Almashtirish">✏️</button>
+              data-fname="${esc(f.file_name)}" title="Yuklab olish">⬇️</button>
             <button class="btn btn-ghost btn-xs btn-danger-ghost" data-act="del-myfile"
               data-tid="${t.id}" data-rtype="${esc(f.rec_type)}" data-rid="${f.rec_id}"
               data-fname="${esc(f.file_name)}" title="O'chirish">🗑️</button>
           </div>
         </div>`).join('')}
-      <input type="file" id="replace-finput" style="display:none">
     </div>` : '';
 
   const myPct = req > 0 ? Math.min(100, Math.round(myCount / req * 100)) : p;
@@ -1382,43 +1378,6 @@ async function deleteMyFile(tid, rtype, rid, fname) {
   toast('🗑️ Fayl o\'chirildi');
 }
 
-let _replaceTarget = null;
-function openReplaceMyFile(tid, rtype, rid, fname) {
-  _replaceTarget = {tid, rtype, rid, fname};
-  const inp = document.getElementById('replace-finput');
-  if (inp) inp.click();
-}
-
-async function replaceMyFile(file) {
-  if (!file || !_replaceTarget) return;
-  const {tid, rtype, rid} = _replaceTarget;
-  const ov = document.createElement('div');
-  ov.className = 'overlay';
-  ov.innerHTML = `<div class="overlay-box"><div class="spinner"></div><div class="overlay-text">Almashtirilmoqda…</div></div>`;
-  document.body.appendChild(ov);
-  try {
-    const fd = new FormData();
-    fd.append('files[]', file);
-    const data = await api(`/api/my-files/${tid}/${rtype}/${rid}`, {method:'POST', body:fd});
-    if (!data || data.error) throw new Error(data?.error || 'server xatosi');
-    // Update state
-    const t = S.tasks.find(x => x.id === tid);
-    if (t) { t.my_file_count = data.my_file_count; t.submitted_by_me = data.submitted_by_me; }
-    if (S.activeTask && S.activeTask.id === tid) {
-      S.activeTask.my_file_count   = data.my_file_count;
-      S.activeTask.submitted_by_me = data.submitted_by_me;
-    }
-    const mfItem = S.myFiles.find(f => f.rec_type === rtype && f.rec_id === rid);
-    if (mfItem) mfItem.file_name = data.file_name;
-    ov.remove();
-    updatePage();
-    toast('✅ Fayl almashtirildi');
-  } catch (e) {
-    ov.remove();
-    showAlert('Xato: ' + e.message);
-  }
-  _replaceTarget = null;
-}
 
 function dlZip(taskId) {
   toast('📦 ZIP tayyorlanmoqda, biroz kuting…');
@@ -2543,17 +2502,12 @@ document.addEventListener('click', ev => {
     case 'del-myfile':
       deleteMyFile(parseInt(d.tid,10), d.rtype, parseInt(d.rid,10), d.fname);
       break;
-    case 'replace-myfile':
-      openReplaceMyFile(parseInt(d.tid,10), d.rtype, parseInt(d.rid,10), d.fname);
-      break;
   }
 });
 
 document.addEventListener('change', ev => {
   if (ev.target.id === 'finput' || ev.target.id === 'finput-cam')
     onFilesPicked(ev.target.files);
-  if (ev.target.id === 'replace-finput' && ev.target.files && ev.target.files[0])
-    replaceMyFile(ev.target.files[0]);
 });
 
 document.addEventListener('input', ev => {
