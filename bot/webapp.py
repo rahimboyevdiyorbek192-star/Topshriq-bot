@@ -724,8 +724,8 @@ async def handle_submit(request: web.Request) -> web.Response:
     # (disk_path, file_id|None, fname, exif_date)
     uploaded: list[tuple[str, str | None, str, str | None]] = []
 
-    uploads_dir = Path(config.db_path).parent / "uploads"
-    uploads_dir.mkdir(exist_ok=True)
+    uploads_dir = Path(config.db_path).resolve().parent / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
 
     send_chats: list[int] = []
     if config.execution_group_id:
