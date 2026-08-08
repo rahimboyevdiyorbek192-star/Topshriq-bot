@@ -38,18 +38,13 @@ echo.
 :: Kutubxonalar
 echo [3/4] Kutubxonalar o'rnatilmoqda...
 call venv\Scripts\activate.bat
-pip install --upgrade pip --quiet
-pip install -r requirements.txt --quiet
+venv\Scripts\python.exe -m pip install --upgrade pip --quiet
+venv\Scripts\python.exe -m pip install -r requirements.txt
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo [XATO] Ba'zi kutubxonalar o'rnatilmadi, qayta urinmoqda...
-    pip install -r requirements.txt
-    if %ERRORLEVEL% neq 0 (
-        echo.
-        echo [XATO] O'rnatishda muammo chiqdi. Yuqoridagi xatoni rasmga olib yuboring.
-        pause
-        exit /b 1
-    )
+    echo [XATO] O'rnatishda muammo chiqdi. Yuqoridagi xatoni rasmga olib yuboring.
+    pause
+    exit /b 1
 )
 echo     Barcha kutubxonalar o'rnatildi.
 echo.
