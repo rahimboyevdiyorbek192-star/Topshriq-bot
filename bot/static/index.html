@@ -450,6 +450,16 @@ const TG_INIT = (tg && tg.initData) || '';
 const IS_TG   = !!TG_INIT;
 if (tg) { tg.ready(); tg.expand(); }
 
+// Mobil klaviatura chiqqanda input ko'rinib tursin
+document.addEventListener('focusin', function(e) {
+  const el = e.target;
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
+    setTimeout(function() {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 350);
+  }
+});
+
 /* ════════════════════════════════════════════════════════════
    Sessiya saqlash
    ════════════════════════════════════════════════════════════ */

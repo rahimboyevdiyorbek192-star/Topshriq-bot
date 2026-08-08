@@ -114,6 +114,8 @@ class Database:
             "ALTER TABLE submissions ADD COLUMN submit_lat REAL",
             "ALTER TABLE submissions ADD COLUMN submit_lon REAL",
             "ALTER TABLE tasks ADD COLUMN required_files INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE submissions ADD COLUMN local_path TEXT",
+            "ALTER TABLE submission_files ADD COLUMN local_path TEXT",
         ]:
             try:
                 await self._conn.execute(sql)
@@ -373,6 +375,7 @@ class Database:
         exif_date: str | None = None,
         submit_lat: float | None = None,
         submit_lon: float | None = None,
+        local_path: str | None = None,
     ) -> bool:
         """Yangi topshirilgan ish qo'shadi. Agar allaqachon topshirilgan bo'lsa yangilaydi.
         Yangi topshiriq bo'lsa True qaytaradi."""
@@ -387,11 +390,11 @@ class Database:
                 """
                 UPDATE submissions
                 SET message_id=?, note=?, file_id=?, file_name=?, exif_date=?,
-                    submit_lat=?, submit_lon=?, submitted_at=?
+                    submit_lat=?, submit_lon=?, local_path=?, submitted_at=?
                 WHERE id=?
                 """,
                 (message_id, note, file_id, file_name, exif_date,
-                 submit_lat, submit_lon, now, existing["id"]),
+                 submit_lat, submit_lon, local_path, now, existing["id"]),
             )
             await self.conn.commit()
             return False
@@ -399,11 +402,11 @@ class Database:
             """
             INSERT INTO submissions
                 (task_id, employee_id, message_id, note, file_id, file_name,
-                 exif_date, submit_lat, submit_lon, submitted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 exif_date, submit_lat, submit_lon, local_path, submitted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (task_id, employee_id, message_id, note, file_id, file_name,
-             exif_date, submit_lat, submit_lon, now),
+             exif_date, submit_lat, submit_lon, local_path, now),
         )
         await self.conn.commit()
         return True
@@ -454,16 +457,19 @@ class Database:
         return list(await cur.fetchall())
 
     async def add_submission_file(
-        self, task_id: int, employee_id: int, file_id: str, file_name: str | None,
-        file_kind: str = "document", exif_date: str | None = None
+        self, task_id: int, employee_id: int, file_id: str | None, file_name: str | None,
+        file_kind: str = "document", exif_date: str | None = None,
+        local_path: str | None = None,
     ) -> None:
         """Topshiriqning qo'shimcha faylini saqlaydi."""
         await self.conn.execute(
             """
-            INSERT INTO submission_files (task_id, employee_id, file_id, file_name, file_kind, exif_date, added_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO submission_files
+                (task_id, employee_id, file_id, file_name, file_kind, exif_date, local_path, added_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, employee_id, file_id, file_name, file_kind, exif_date, datetime.now().isoformat()),
+            (task_id, employee_id, file_id, file_name, file_kind, exif_date,
+             local_path, datetime.now().isoformat()),
         )
         await self.conn.commit()
 
@@ -628,6 +634,22 @@ class Database:
             return "submission", row["employee_id"]
 
         return "unknown", None
+
+    async def get_file_local_path(self, file_id: str) -> str | None:
+        """file_id bo'yicha disk'dagi yo'lni qaytaradi (agar mavjud bo'lsa)."""
+        cur = await self.conn.execute(
+            "SELECT local_path FROM submissions WHERE file_id=? LIMIT 1", (file_id,)
+        )
+        row = await cur.fetchone()
+        if row and row["local_path"]:
+            return row["local_path"]
+        cur = await self.conn.execute(
+            "SELECT local_path FROM submission_files WHERE file_id=? LIMIT 1", (file_id,)
+        )
+        row = await cur.fetchone()
+        if row and row["local_path"]:
+            return row["local_path"]
+        return None
 
     # ---------- ZIP uchun ma'lumotlar ----------
     async def get_all_task_submissions(self, task_id: int) -> list[aiosqlite.Row]:

@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import urllib.parse
+import uuid
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -407,40 +408,56 @@ async def handle_task_zip(request: web.Request) -> web.Response:
         wb.save(xl_buf)
         zf.writestr("svodka.xlsx", xl_buf.getvalue())
 
-        # Fayllarni Telegram dan yuklash
-        async with httpx.AsyncClient(timeout=30) as client:
-            used: set[str] = set()
+        # Fayllarni yuklash: avval disk, keyin Telegram
+        used: set[str] = set()
 
-            async def _dl(file_id: str, file_name: str | None, folder: str) -> None:
-                if not file_id:
+        async def _dl(
+            local_path: str | None,
+            file_id: str | None,
+            file_name: str | None,
+            folder: str,
+            client: httpx.AsyncClient,
+        ) -> None:
+            # 1. Disk dan o'qish
+            if local_path:
+                p = Path(local_path)
+                if p.exists():
+                    fname = _safe_filename(file_name or p.name)
+                    zf.writestr(_unique_arcname(folder, fname, used), p.read_bytes())
                     return
-                try:
-                    tg_file  = await bot.get_file(file_id)
-                    file_url = (
-                        f"https://api.telegram.org/file/bot"
-                        f"{config.bot_token}/{tg_file.file_path}"
-                    )
-                    r = await client.get(file_url)
-                    r.raise_for_status()
-                    fname = _safe_filename(
-                        file_name or (tg_file.file_path or "").split("/")[-1]
-                    )
-                    zf.writestr(_unique_arcname(folder, fname, used), r.content)
-                except Exception as exc:
-                    logger.warning("ZIP fayl yuklanmadi %s: %s", file_id, exc)
+            # 2. Telegram dan yuklash
+            if not file_id:
+                return
+            try:
+                tg_file  = await bot.get_file(file_id)
+                file_url = (
+                    f"https://api.telegram.org/file/bot"
+                    f"{config.bot_token}/{tg_file.file_path}"
+                )
+                r = await client.get(file_url)
+                r.raise_for_status()
+                fname = _safe_filename(
+                    file_name or (tg_file.file_path or "").split("/")[-1]
+                )
+                zf.writestr(_unique_arcname(folder, fname, used), r.content)
+            except Exception as exc:
+                logger.warning("ZIP fayl yuklanmadi %s: %s", file_id, exc)
 
+        async with httpx.AsyncClient(timeout=30) as client:
             for s in submissions:
-                if s["file_id"]:
+                lp = s["local_path"] if "local_path" in s.keys() else None
+                if lp or s["file_id"]:
                     folder = _safe_filename(
                         s["position"] or s["full_name"] or str(s["employee_id"])
                     )
-                    await _dl(s["file_id"], s["file_name"], folder)
+                    await _dl(lp, s["file_id"], s["file_name"], folder, client)
 
             for ef in extra_files:
+                lp = ef["local_path"] if "local_path" in ef.keys() else None
                 folder = _safe_filename(
                     ef["position"] or ef["full_name"] or str(ef["employee_id"])
                 )
-                await _dl(ef["file_id"], ef["file_name"], folder)
+                await _dl(lp, ef["file_id"], ef["file_name"], folder, client)
 
     buf.seek(0)
     safe = _safe_filename(task["title"][:40])
@@ -703,49 +720,66 @@ async def handle_submit(request: web.Request) -> web.Response:
     if not await db.get_employee(user_id):
         await db.add_employee(user_id, full_name, user.get("username"))
 
-    # ── 3. Fayllarni Telegram'ga yuborish ─────────────────
-    uploaded: list[tuple[str, str, str | None]] = []   # (file_id, fname, exif_date)
+    # ── 3. Fayllarni disk'ga saqlash + Telegram'ga yuborish ──
+    # (disk_path, file_id|None, fname, exif_date)
+    uploaded: list[tuple[str, str | None, str, str | None]] = []
+
+    uploads_dir = Path(config.db_path).parent / "uploads"
+    uploads_dir.mkdir(exist_ok=True)
+
     send_chats: list[int] = []
     if config.execution_group_id:
         send_chats.append(config.execution_group_id)
     if config.manager_ids:
         send_chats.extend(config.manager_ids)
 
-    if pending and send_chats:
+    if pending:
         from aiogram.types import BufferedInputFile
         uname = f"@{user['username']}" if user.get("username") else full_name
         for idx, (fname, fdata, exif_d) in enumerate(pending):
-            caption = (
-                f"📱 <b>Mini App topshiriq</b>\n👤 {uname}\n📋 #{task_id}"
-                if idx == 0 else None
-            )
-            sent = None
-            for chat_id in send_chats:
-                try:
-                    sent = await bot.send_document(
-                        chat_id, BufferedInputFile(fdata, filename=fname), caption=caption
-                    )
-                    break
-                except Exception as exc:
-                    logger.warning("Fayl %s ga yuborilmadi (%s): %s", chat_id, fname, exc)
-            if sent and sent.document:
-                uploaded.append((sent.document.file_id, fname, exif_d))
-            else:
-                logger.error("Fayl hech qayerga yuborilmadi: %s", fname)
+            # Disk'ga saqlash (har doim)
+            safe = _safe_filename(fname)
+            disk_path = uploads_dir / f"{uuid.uuid4().hex}_{safe}"
+            disk_path.write_bytes(fdata)
+
+            # Telegram'ga yuborish (ixtiyoriy, xabarnoma uchun)
+            tg_file_id: str | None = None
+            if send_chats:
+                caption = (
+                    f"📱 <b>Mini App topshiriq</b>\n👤 {uname}\n📋 #{task_id}"
+                    if idx == 0 else None
+                )
+                for chat_id in send_chats:
+                    try:
+                        sent = await bot.send_document(
+                            chat_id, BufferedInputFile(fdata, filename=fname), caption=caption
+                        )
+                        if sent and sent.document:
+                            tg_file_id = sent.document.file_id
+                        break
+                    except Exception as exc:
+                        logger.warning("TG yuborish %s (%s): %s", chat_id, fname, exc)
+
+            uploaded.append((str(disk_path), tg_file_id, fname, exif_d))
 
     # ── 4. Bazaga yozish ──────────────────────────────────
     try:
+        first = uploaded[0] if uploaded else None
         await db.add_submission(
             task_id=task_id, employee_id=user_id, message_id=None,
             note=(note or "").strip() or "Mini App orqali yuborildi",
-            file_id=uploaded[0][0] if uploaded else None,
-            file_name=uploaded[0][1] if uploaded else None,
-            exif_date=uploaded[0][2] if uploaded else None,
+            file_id=first[1] if first else None,
+            file_name=first[2] if first else None,
+            exif_date=first[3] if first else None,
             submit_lat=submit_lat,
             submit_lon=submit_lon,
+            local_path=first[0] if first else None,
         )
-        for fid, fname, exif_d in uploaded[1:]:
-            await db.add_submission_file(task_id, user_id, fid, fname, exif_date=exif_d)
+        for disk_p, fid, fname, exif_d in uploaded[1:]:
+            await db.add_submission_file(
+                task_id, user_id, fid, fname,
+                exif_date=exif_d, local_path=disk_p,
+            )
     except Exception as exc:
         logger.error("Submit bazaga yozilmadi: %s", exc, exc_info=True)
         return _json({"error": "Ma\'lumotni saqlab bo\'lmadi"}, 500)
@@ -782,6 +816,18 @@ async def handle_file_proxy(request: web.Request) -> web.Response:
         )
         return web.Response(status=403)
 
+    # Avval local_path dan qidirish
+    local_path: str | None = await db.get_file_local_path(file_id)
+    if local_path:
+        p = Path(local_path)
+        if p.exists():
+            fname = _safe_filename(request.rel_url.query.get("name", "") or p.name)
+            return _cors(web.Response(
+                body=p.read_bytes(),
+                content_type="application/octet-stream",
+                headers={"Content-Disposition": _content_disposition(fname)},
+            ))
+
     try:
         tg_file  = await bot.get_file(file_id)
         file_url = (
@@ -790,7 +836,6 @@ async def handle_file_proxy(request: web.Request) -> web.Response:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.get(file_url)
             r.raise_for_status()
-        # Haqiqiy fayl nomini ?name= dan olamiz, aks holda Telegram nomi ishlatiladi
         fname = _safe_filename(
             request.rel_url.query.get("name", "")
             or (tg_file.file_path.split("/")[-1] if tg_file.file_path else "fayl")
