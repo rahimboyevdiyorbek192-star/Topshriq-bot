@@ -1277,6 +1277,79 @@ function onFilesPicked(files, replace) {
 
 function removeFile(i) { S.selFiles.splice(i, 1); renderSelFiles(); }
 
+/* Minimal JPEG EXIF o'quvchi — qurilma, sana, GPS ni qaytaradi.
+   Faqat birinchi 64 KB o'qiladi (EXIF har doim boshida bo'ladi). */
+function _parseJpegExif(buf) {
+  try {
+    var dv = new DataView(buf), n = dv.byteLength;
+    if (n < 4 || dv.getUint16(0, false) !== 0xFFD8) return null;
+    for (var p = 2; p + 4 <= n;) {
+      var m = dv.getUint16(p, false), sl = dv.getUint16(p + 2, false);
+      if (m === 0xFFE1 && sl > 10 &&
+          dv.getUint32(p + 4, false) === 0x45786966 &&
+          dv.getUint16(p + 8, false) === 0) {
+        var B = p + 10;
+        var le = dv.getUint16(B, false) === 0x4949;
+        var u16 = function(o){return dv.getUint16(B+o,le);};
+        var u32 = function(o){return dv.getUint32(B+o,le);};
+        if (u16(2) !== 42) return null;
+        var out = {}, ifd = u32(4), nc = u16(ifd);
+        for (var i = 0; i < nc && i < 64; i++) {
+          var e = ifd+2+i*12, tag=u16(e), typ=u16(e+2), cnt=u32(e+4);
+          var sz=((typ===5||typ===10)?8:typ===4?4:typ===3?2:1)*cnt;
+          var vp=B+(sz>4?u32(e+8):e+8);
+          if (typ===2) {
+            var s='';
+            for(var j=0;j<cnt-1&&j<256;j++){var c=dv.getUint8(vp+j);if(!c)break;s+=String.fromCharCode(c);}
+            s=s.trim();
+            if((tag===0x9003||tag===0x9004||tag===0x0132)&&!out.date)out.date=s;
+            else if(tag===0x010F)out._mk=s;
+            else if(tag===0x0110)out._md=s;
+          } else if(typ===4&&cnt===1&&tag===0x8825) out._gps=dv.getUint32(B+e+8,le);
+        }
+        if (out._gps!==undefined) {
+          var gi=out._gps,gn=u16(gi),latR='N',lonR='E',lat=null,lon=null;
+          for(var i=0;i<gn&&i<32;i++){
+            var e=gi+2+i*12,tag=u16(e),typ=u16(e+2),cnt=u32(e+4);
+            var sz=(typ===5?8:1)*cnt,vp=B+(sz>4?u32(e+8):e+8);
+            if(typ===2){var ref=String.fromCharCode(dv.getUint8(vp));if(tag===1)latR=ref;else if(tag===3)lonR=ref;}
+            else if(typ===5&&cnt>=3){
+              var gd=dv.getUint32(vp,le),gdn=dv.getUint32(vp+4,le);
+              var gm=dv.getUint32(vp+8,le),gmn=dv.getUint32(vp+12,le);
+              var gs=dv.getUint32(vp+16,le),gsn=dv.getUint32(vp+20,le);
+              var dd=(gdn?gd/gdn:0)+(gmn?gm/gmn:0)/60+(gsn?gs/gsn:0)/3600;
+              if(tag===2)lat=dd;else if(tag===4)lon=dd;
+            }
+          }
+          if(lat!==null&&lon!==null){if(latR==='S')lat=-lat;if(lonR==='W')lon=-lon;out.gps=lat.toFixed(6)+','+lon.toFixed(6);}
+          delete out._gps;
+        }
+        if(out._mk||out._md){
+          var pts=[out._mk,out._md].filter(Boolean);
+          if(pts.length===2&&pts[1].startsWith(pts[0]))pts=[pts[1]];
+          out.device=pts.join(' ');
+        }
+        delete out._mk;delete out._md;
+        return(out.date||out.device||out.gps)?out:null;
+      }
+      if(sl<2)break;
+      p+=2+sl;
+    }
+  } catch(_) {}
+  return null;
+}
+
+function readExifFromFile(file) {
+  return new Promise(function(resolve) {
+    var nm = (file.name||'').toLowerCase();
+    if(!file.type.includes('jpeg')&&!nm.endsWith('.jpg')&&!nm.endsWith('.jpeg')){resolve(null);return;}
+    var fr = new FileReader();
+    fr.onload = function(e){try{resolve(_parseJpegExif(e.target.result));}catch(_){resolve(null);}};
+    fr.onerror = function(){resolve(null);};
+    fr.readAsArrayBuffer(file.slice(0,65536));
+  });
+}
+
 /* Rasmni canvas orqali siqadi (JPEG, maks 1920px, 82% sifat).
    Fayl kichik bo'lsa yoki rasm bo'lmasa o'zgarishsiz qaytaradi. */
 function compressImage(file) {
@@ -1339,12 +1412,14 @@ async function doSubmit() {
   const ovTxt = ov.querySelector('.overlay-text');
 
   try {
-    // Rasmlarni siqish (katta fayllar)
+    // Rasmlarni siqish + EXIF siqishdan OLDIN o'qish
     let filesToSend = S.selFiles;
+    const exifList = new Array(S.selFiles.length).fill(null);
     if (S.selFiles.length) {
       const compressed = [];
       for (let i = 0; i < S.selFiles.length; i++) {
         if (ovTxt) ovTxt.textContent = `Optimallashtirilmoqda… ${i+1}/${S.selFiles.length}`;
+        exifList[i] = await readExifFromFile(S.selFiles[i]);
         compressed.push(await compressImage(S.selFiles[i]));
       }
       filesToSend = compressed;
@@ -1356,6 +1431,7 @@ async function doSubmit() {
     fd.append('task_id', S.activeTask.id);
     if (S.note.trim()) fd.append('note', S.note.trim());
     if (coords) { fd.append('lat', coords.lat); fd.append('lon', coords.lon); }
+    fd.append('exif_json', JSON.stringify(exifList));
     filesToSend.forEach(f => fd.append('files[]', f));
 
     const data = await api('/api/submit', {method:'POST', body: fd});

@@ -726,6 +726,7 @@ async def handle_submit(request: web.Request) -> web.Response:
     note: str | None        = None
     lat_raw: str | None     = None
     lon_raw: str | None     = None
+    client_exif: list       = []  # exif_json maydonidan
     pending: list[tuple[str, bytes, str | None, str | None, str | None]] = []  # (fname, data, exif_date, exif_device, exif_gps)
 
     try:
@@ -740,6 +741,14 @@ async def handle_submit(request: web.Request) -> web.Response:
                     lat_raw = (await field.read(decode=True)).decode("utf-8", "ignore")
                 elif field.name == "lon":
                     lon_raw = (await field.read(decode=True)).decode("utf-8", "ignore")
+                elif field.name == "exif_json":
+                    raw = (await field.read(decode=True)).decode("utf-8", "ignore")
+                    try:
+                        parsed = json.loads(raw)
+                        if isinstance(parsed, list):
+                            client_exif = parsed
+                    except Exception:
+                        pass
                 elif field.name in ("file", "files", "files[]"):
                     fdata = await field.read()
                     if fdata:
@@ -756,6 +765,17 @@ async def handle_submit(request: web.Request) -> web.Response:
     except Exception as exc:
         logger.warning("Submit so'rovini o'qib bo'lmadi: %s", exc)
         return _json({"error": "So'rovni o'qib bo'lmadi"}, 400)
+
+    # Client EXIF (siqishdan oldin o'qilgan) — server ekstraktsiyasini to'ldiradi/almаshtiradi
+    for i, ov in enumerate(client_exif):
+        if i < len(pending) and ov and isinstance(ov, dict):
+            fname, fdata, ed, edev, eg = pending[i]
+            pending[i] = (
+                fname, fdata,
+                (ov.get("date")   or "").strip() or ed,
+                (ov.get("device") or "").strip() or edev,
+                (ov.get("gps")    or "").strip() or eg,
+            )
 
     submit_lat: float | None = None
     submit_lon: float | None = None
