@@ -15,7 +15,7 @@
   --primary:#2678b6; --primary-lt:#e8f1f9;
   --success:#16a34a; --warning:#d97706; --danger:#dc2626;
   --success-bg:#dcfce7; --warning-bg:#fef3c7; --danger-bg:#fee2e2;
-  --nav-h:60px;
+  --nav-h:70px;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -98,7 +98,7 @@ button,input,select,textarea{font-family:inherit}
 @media(max-width:767px){
   .sidebar{display:none}
   /* Pastki menyu tagida qolib ketmasligi uchun bo'sh joy */
-  .pad-nav{padding-bottom:calc(var(--nav-h) + 14px + env(safe-area-inset-bottom))}
+  .pad-nav{padding-bottom:calc(var(--nav-h) + 24px + env(safe-area-inset-bottom))}
 }
 
 /* ── Tugmalar ────────────────────────────────────────────── */
@@ -672,6 +672,20 @@ function forceLogout() {
 }
 
 /* ════════════════════════════════════════════════════════════
+   Pastki nav balandligini o'lchash
+   ════════════════════════════════════════════════════════════ */
+function _syncNavHeight() {
+  const bn = document.querySelector('.bottom-nav');
+  if (!bn) return;
+  const h = bn.getBoundingClientRect().height || bn.offsetHeight;
+  if (h > 10) document.documentElement.style.setProperty('--nav-h', h + 'px');
+}
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(_syncNavHeight).observe(document.documentElement);
+}
+window.addEventListener('resize', _syncNavHeight);
+
+/* ════════════════════════════════════════════════════════════
    Render
    ════════════════════════════════════════════════════════════ */
 function render(patch) {
@@ -686,6 +700,7 @@ function render(patch) {
 
   root.innerHTML = shell();
   syncBackButton();
+  _syncNavHeight();
   updatePage();
 }
 
