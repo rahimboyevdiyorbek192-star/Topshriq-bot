@@ -121,6 +121,41 @@ class Database:
                 await self._conn.execute(sql)
             except Exception:
                 pass
+
+        # submission_files.file_id NOT NULL → NULL ruxsat berish (jadval qayta yaratish)
+        try:
+            cur = await self._conn.execute("PRAGMA table_info(submission_files)")
+            cols = await cur.fetchall()
+            file_id_notnull = any(
+                c[1] == "file_id" and c[3] == 1  # c[1]=name, c[3]=notnull
+                for c in cols
+            )
+            if file_id_notnull:
+                await self._conn.executescript("""
+                    PRAGMA foreign_keys = OFF;
+                    CREATE TABLE IF NOT EXISTS submission_files_v2 (
+                        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                        task_id     INTEGER NOT NULL,
+                        employee_id INTEGER NOT NULL,
+                        file_id     TEXT,
+                        file_name   TEXT,
+                        file_kind   TEXT,
+                        exif_date   TEXT,
+                        added_at    TEXT NOT NULL,
+                        local_path  TEXT,
+                        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+                    );
+                    INSERT INTO submission_files_v2
+                        SELECT id, task_id, employee_id, file_id, file_name,
+                               file_kind, exif_date, added_at, local_path
+                        FROM submission_files;
+                    DROP TABLE submission_files;
+                    ALTER TABLE submission_files_v2 RENAME TO submission_files;
+                    PRAGMA foreign_keys = ON;
+                """)
+        except Exception:
+            pass
+
         await self._conn.execute("""
             CREATE TABLE IF NOT EXISTS web_sessions (
                 token      TEXT PRIMARY KEY,
