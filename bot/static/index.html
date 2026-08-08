@@ -1937,6 +1937,13 @@ function openEmpModal(tgId) {
                placeholder="+998901234567" value="${esc(emp && emp.login_phone)}">
         <div class="form-hint">Xodim shu raqam bilan tizimga kiradi</div>
       </div>
+      ${!edit ? `
+      <div class="form-group">
+        <label class="form-label" for="em-tgid">Telegram ID (ixtiyoriy)</label>
+        <input class="form-input" id="em-tgid" type="number" min="1"
+               placeholder="1234567890">
+        <div class="form-hint">Botdagi /id buyrug'idan bilib oling — guruh topshiriqlarini bog'lash uchun</div>
+      </div>` : ''}
       <div class="form-group">
         <label class="form-label" for="em-pw">${edit ? "Yangi parol (bo'sh = o'zgarmaydi)" : 'Parol *'}</label>
         <div class="pw-wrap">
@@ -2001,8 +2008,10 @@ async function saveEmp(tgId) {
   try {
     let data;
     if (tgId == null) {
-      data = await api('/api/employees', {method:'POST',
-        body:{full_name:name, position:pos, login_phone:phone, password:pw}});
+      const body = {full_name:name, position:pos, login_phone:phone, password:pw};
+      const tgIdVal = (document.getElementById('em-tgid') || {}).value || '';
+      if (tgIdVal) { const n = parseInt(tgIdVal, 10); if (n > 0) body.tg_id = n; }
+      data = await api('/api/employees', {method:'POST', body});
     } else {
       const body = {full_name:name, position:pos, login_phone:phone,
                     active: activeEl ? parseInt(activeEl.value, 10) : 1};

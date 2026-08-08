@@ -614,8 +614,26 @@ class Database:
         return await cur.fetchone()
 
     async def add_employee_web(
-        self, full_name: str, position: str, login_phone: str, password_hash: str
+        self, full_name: str, position: str, login_phone: str, password_hash: str,
+        tg_id: int | None = None,
     ) -> int:
+        if tg_id is not None and tg_id > 0:
+            existing = await self.get_employee(tg_id)
+            if existing:
+                await self.conn.execute(
+                    """UPDATE employees SET full_name=?, position=?, login_phone=?,
+                       password_hash=? WHERE tg_id=?""",
+                    (full_name, position, login_phone, password_hash, tg_id),
+                )
+            else:
+                await self.conn.execute(
+                    """INSERT INTO employees
+                       (tg_id, full_name, username, active, created_at, position, login_phone, password_hash)
+                       VALUES (?,?,NULL,1,?,?,?,?)""",
+                    (tg_id, full_name, datetime.now().isoformat(), position, login_phone, password_hash),
+                )
+            await self.conn.commit()
+            return tg_id
         tg_id = await self._next_web_id()
         await self.conn.execute(
             """INSERT INTO employees

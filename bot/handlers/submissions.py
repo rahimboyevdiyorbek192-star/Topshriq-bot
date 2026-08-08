@@ -4,10 +4,12 @@ Muammolar va yechimlar:
   • DM fayl yo'qolishi: _pending_dm dict orqali fayl saqlanadi, tugma bosilganda qo'llaniladi.
   • Auto-register: ijro guruhida xabar yozgan har kim ro'yxatga tushadi.
   • Re-submission: xodim qayta yuborsa — eng yangi fayl saqlanadi.
+  • Guruh fayllar: teglanmagan fayllar uchun bot topshiriq so'raydi.
 """
 from __future__ import annotations
 
 import re
+import uuid
 from typing import Any
 
 from aiogram import Bot, F, Router
@@ -32,6 +34,14 @@ _TASK_TAG = re.compile(r"#\s?[tTтТ]\s?(\d+)")
 # {user_id: {"file_id": ..., "file_name": ..., "note": ..., "msg_id": ...}}
 _pending_dm: dict[int, dict] = {}
 
+# Guruh: teglanmagan foto/video albom kutilmoqda
+# {user_id: {"files": [(file_id, file_name, kind), ...], "note": ..., "msg_id": ...}}
+_pending_group_album: dict[int, dict] = {}
+
+# Guruh: teglanmagan hujjat kutilmoqda
+# {token: {"file_id": ..., "file_name": ..., "file_kind": ..., "note": ..., "user_id": ..., "msg_id": ...}}
+_pending_group_doc: dict[str, dict] = {}
+
 
 def _full_name(user) -> str:
     return (user.full_name or user.first_name or "Nomsiz").strip()
@@ -49,6 +59,36 @@ async def _resolve_task_id(message: Message, db: Database) -> int | None:
         if task:
             return task_id
     return None
+
+
+async def _record_files(
+    task_id: int,
+    employee_id: int,
+    files: list[tuple[str | None, str | None, str]],
+    note: str | None,
+    msg_id: int | None,
+    db: Database,
+) -> tuple[int, int]:
+    """Bir xodimning bir nechta faylini topshiriq bilan bog'laydi.
+
+    files = list of (file_id, file_name, kind).
+    Returns (submitted_count, total_employees).
+    """
+    for i, (fid, fname, fkind) in enumerate(files):
+        if i == 0:
+            await db.add_submission(
+                task_id=task_id, employee_id=employee_id,
+                message_id=msg_id, note=note,
+                file_id=fid, file_name=fname,
+            )
+        else:
+            await db.add_submission_file(
+                task_id=task_id, employee_id=employee_id,
+                file_id=fid, file_name=fname, file_kind=fkind,
+            )
+    submitted = await db.submitted_employee_ids(task_id)
+    total = await db.count_employees()
+    return len(submitted), total
 
 
 async def _record_submission(
@@ -127,14 +167,14 @@ async def cmd_my_tasks(
     & (F.text | F.caption | F.document | F.photo | F.video | F.audio | F.voice)
 )
 async def handle_group_submission(
-    message: Message, db: Database, config: Config
+    message: Message, db: Database, config: Config,
+    album: list[Message] | None = None,
 ) -> None:
     # Faqat ijro guruhida ishlaydi
     if config.execution_group_id is not None:
         if message.chat.id != config.execution_group_id:
             return
     else:
-        # Ijro guruhi sozlanmagan — topshiriqlar/kanal guruhida ham ishlashini oldini olish
         if config.tasks_group_id and message.chat.id == config.tasks_group_id:
             return
         if config.tasks_channel_id and message.chat.id == config.tasks_channel_id:
@@ -144,16 +184,129 @@ async def handle_group_submission(
     if not user:
         return
 
-    # Auto-register: ijro guruhida xabar yozgan har kim xodim sifatida qo'shiladi
+    # Auto-register
     emp = await db.get_employee(user.id)
     if not emp:
         await db.add_employee(user.id, _full_name(user), user.username)
 
     task_id = await _resolve_task_id(message, db)
-    if task_id is None:
+    note = message_text(message)[:1000] or None
+
+    if task_id is not None:
+        # Topshiriq teglanган — barcha albom fayllarini birga saqlash
+        if album:
+            files = [
+                (fi[0], fi[1], fi[2])
+                for m in album
+                if (fi := extract_file(m)) is not None
+            ]
+            if files:
+                submitted, total = await _record_files(
+                    task_id, user.id, files, note, message.message_id, db
+                )
+                try:
+                    await message.reply(
+                        f"✅ <b>#{task_id}-topshiriq</b>: {len(files)} ta fayl qabul qilindi.\n"
+                        f"({submitted}/{total} xodim topshirdi)",
+                        disable_notification=True,
+                    )
+                except Exception:
+                    pass
+                return
+        await _record_submission(message, task_id, db)
         return
 
-    await _record_submission(message, task_id, db)
+    # Topshiriq ko'rsatilmagan — bot so'raydi
+    tasks = await db.list_open_tasks()
+    if not tasks:
+        return  # Ochiq topshiriqlar yo'q — jim o'tamiz
+
+    all_msgs = album if album else [message]
+    media_files: list[tuple[str | None, str | None, str]] = []
+    doc_files: list[tuple[str | None, str | None, str]] = []
+
+    for m in all_msgs:
+        info = extract_file(m)
+        if not info:
+            continue
+        fid, fname, kind = info
+        if kind in ("photo", "video", "voice"):
+            media_files.append((fid, fname, kind))
+        else:
+            doc_files.append((fid, fname, kind))
+
+    if not media_files and not doc_files:
+        return  # Faqat matn — e'tibor bermaymiz
+
+    if len(tasks) == 1:
+        # Bitta ochiq topshiriq — avtomatik bog'laymiz
+        task_id = tasks[0]["id"]
+        all_files = media_files + doc_files
+        submitted, total = await _record_files(
+            task_id, user.id, all_files, note, message.message_id, db
+        )
+        try:
+            await message.reply(
+                f"✅ <b>#{task_id}-topshiriq</b> ga {len(all_files)} ta fayl qabul qilindi.\n"
+                f"({submitted}/{total} xodim topshirdi)",
+                disable_notification=True,
+            )
+        except Exception:
+            pass
+        return
+
+    # Bir nechta topshiriq — so'rov tugmalarini yuboramiz
+    rows = [
+        [InlineKeyboardButton(
+            text=f"#{t['id']} {t['title'][:38]}",
+            callback_data=f"grp_al:{t['id']}:{user.id}",
+        )]
+        for t in tasks[:10]
+    ]
+
+    # Foto/video albom — bitta savol
+    if media_files:
+        _pending_group_album[user.id] = {
+            "files": media_files,
+            "note": note,
+            "msg_id": message.message_id,
+        }
+        try:
+            await message.reply(
+                f"📸 <b>{len(media_files)} ta rasm/video</b> — qaysi topshiriq uchun?",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+                disable_notification=True,
+            )
+        except Exception:
+            pass
+
+    # Hujjatlar — har biri alohida savol
+    for fid, fname, fkind in doc_files:
+        token = uuid.uuid4().hex
+        _pending_group_doc[token] = {
+            "file_id":   fid,
+            "file_name": fname,
+            "file_kind": fkind,
+            "note":      note,
+            "user_id":   user.id,
+            "msg_id":    message.message_id,
+        }
+        doc_rows = [
+            [InlineKeyboardButton(
+                text=f"#{t['id']} {t['title'][:38]}",
+                callback_data=f"grp_doc:{t['id']}:{token}",
+            )]
+            for t in tasks[:10]
+        ]
+        display = fname or fkind or "Fayl"
+        try:
+            await message.reply(
+                f"📎 <b>{display}</b> — qaysi topshiriq uchun?",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=doc_rows),
+                disable_notification=True,
+            )
+        except Exception:
+            pass
 
 
 # ── DM: xodim botga shaxsiy xabar yuboradi ───────────────────
@@ -227,6 +380,80 @@ async def handle_private_submission(
         "Faylingiz saqlanib turibdi — topshiriqni tanlang:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
+
+
+@router.callback_query(F.data.startswith("grp_al:"))
+async def cb_grp_album(callback: CallbackQuery, db: Database) -> None:
+    parts = callback.data.split(":")
+    task_id = int(parts[1])
+    user_id = int(parts[2])
+
+    pending = _pending_group_album.pop(user_id, {})
+    files   = pending.get("files", [])
+    note    = pending.get("note")
+    msg_id  = pending.get("msg_id")
+
+    if not files:
+        await callback.answer("⚠️ Fayl topilmadi (muhlat o'tgan bo'lishi mumkin).")
+        return
+
+    emp = await db.get_employee(user_id)
+    if not emp:
+        await callback.answer("⚠️ Xodim topilmadi.")
+        return
+
+    submitted, total = await _record_files(task_id, user_id, files, note, msg_id, db)
+    await callback.message.edit_text(
+        f"✅ <b>#{task_id}-topshiriq</b> ga {len(files)} ta rasm qabul qilindi.\n"
+        f"({submitted}/{total} xodim topshirdi)"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("grp_doc:"))
+async def cb_grp_doc(callback: CallbackQuery, db: Database) -> None:
+    parts   = callback.data.split(":", 2)
+    task_id = int(parts[1])
+    token   = parts[2]
+
+    pending   = _pending_group_doc.pop(token, {})
+    file_id   = pending.get("file_id")
+    file_name = pending.get("file_name")
+    file_kind = pending.get("file_kind") or "document"
+    note      = pending.get("note")
+    user_id   = pending.get("user_id")
+    msg_id    = pending.get("msg_id")
+
+    if not user_id:
+        await callback.answer("⚠️ Ma'lumot topilmadi (muhlat o'tgan bo'lishi mumkin).")
+        return
+
+    emp = await db.get_employee(user_id)
+    if not emp:
+        await callback.answer("⚠️ Xodim topilmadi.")
+        return
+
+    existing = await db.get_submission(task_id, user_id)
+    if existing:
+        await db.add_submission_file(
+            task_id=task_id, employee_id=user_id,
+            file_id=file_id, file_name=file_name, file_kind=file_kind,
+        )
+    else:
+        await db.add_submission(
+            task_id=task_id, employee_id=user_id,
+            message_id=msg_id, note=note,
+            file_id=file_id, file_name=file_name,
+        )
+
+    submitted = await db.submitted_employee_ids(task_id)
+    total     = await db.count_employees()
+    display   = file_name or file_kind or "Fayl"
+    await callback.message.edit_text(
+        f"✅ <b>#{task_id}-topshiriq</b>: {display} qabul qilindi.\n"
+        f"({len(submitted)}/{total} xodim topshirdi)"
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("dm_submit:"))

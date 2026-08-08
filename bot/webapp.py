@@ -975,12 +975,23 @@ async def handle_employees_add(request: web.Request) -> web.Response:
     if not full_name or not login_phone or not password:
         return _json({"error": "Ism, telefon va parol majburiy"}, 400)
 
+    tg_id_web: int | None = None
+    try:
+        raw = data.get("tg_id")
+        if raw:
+            v = int(raw)
+            if v > 0:
+                tg_id_web = v
+    except (ValueError, TypeError):
+        pass
+
     db: Database = request.app["db"]
-    if await db.get_employee_by_login_phone(login_phone):
+    existing_phone = await db.get_employee_by_login_phone(login_phone)
+    if existing_phone and (tg_id_web is None or existing_phone["tg_id"] != tg_id_web):
         return _json({"error": "Bu telefon raqam allaqachon ro'yxatda"}, 409)
 
     pw_hash = Database.hash_password(password)
-    tg_id   = await db.add_employee_web(full_name, position, login_phone, pw_hash)
+    tg_id   = await db.add_employee_web(full_name, position, login_phone, pw_hash, tg_id=tg_id_web)
     return _json({"ok": True, "tg_id": tg_id})
 
 
