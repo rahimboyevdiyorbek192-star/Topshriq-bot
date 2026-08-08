@@ -116,6 +116,10 @@ class Database:
             "ALTER TABLE tasks ADD COLUMN required_files INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE submissions ADD COLUMN local_path TEXT",
             "ALTER TABLE submission_files ADD COLUMN local_path TEXT",
+            "ALTER TABLE submissions ADD COLUMN exif_device TEXT",
+            "ALTER TABLE submissions ADD COLUMN exif_gps TEXT",
+            "ALTER TABLE submission_files ADD COLUMN exif_device TEXT",
+            "ALTER TABLE submission_files ADD COLUMN exif_gps TEXT",
         ]:
             try:
                 await self._conn.execute(sql)
@@ -417,6 +421,8 @@ class Database:
         submit_lat: float | None = None,
         submit_lon: float | None = None,
         local_path: str | None = None,
+        exif_device: str | None = None,
+        exif_gps: str | None = None,
     ) -> bool:
         """Yangi topshirilgan ish qo'shadi. Agar allaqachon topshirilgan bo'lsa yangilaydi.
         Yangi topshiriq bo'lsa True qaytaradi."""
@@ -431,11 +437,13 @@ class Database:
                 """
                 UPDATE submissions
                 SET message_id=?, note=?, file_id=?, file_name=?, exif_date=?,
-                    submit_lat=?, submit_lon=?, local_path=?, submitted_at=?
+                    submit_lat=?, submit_lon=?, local_path=?, submitted_at=?,
+                    exif_device=?, exif_gps=?
                 WHERE id=?
                 """,
                 (message_id, note, file_id, file_name, exif_date,
-                 submit_lat, submit_lon, local_path, now, existing["id"]),
+                 submit_lat, submit_lon, local_path, now,
+                 exif_device, exif_gps, existing["id"]),
             )
             await self.conn.commit()
             return False
@@ -443,11 +451,13 @@ class Database:
             """
             INSERT INTO submissions
                 (task_id, employee_id, message_id, note, file_id, file_name,
-                 exif_date, submit_lat, submit_lon, local_path, submitted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 exif_date, submit_lat, submit_lon, local_path, submitted_at,
+                 exif_device, exif_gps)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (task_id, employee_id, message_id, note, file_id, file_name,
-             exif_date, submit_lat, submit_lon, local_path, now),
+             exif_date, submit_lat, submit_lon, local_path, now,
+             exif_device, exif_gps),
         )
         await self.conn.commit()
         return True
@@ -501,16 +511,19 @@ class Database:
         self, task_id: int, employee_id: int, file_id: str | None, file_name: str | None,
         file_kind: str = "document", exif_date: str | None = None,
         local_path: str | None = None,
+        exif_device: str | None = None,
+        exif_gps: str | None = None,
     ) -> None:
         """Topshiriqning qo'shimcha faylini saqlaydi."""
         await self.conn.execute(
             """
             INSERT INTO submission_files
-                (task_id, employee_id, file_id, file_name, file_kind, exif_date, local_path, added_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (task_id, employee_id, file_id, file_name, file_kind, exif_date,
+                 local_path, added_at, exif_device, exif_gps)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (task_id, employee_id, file_id, file_name, file_kind, exif_date,
-             local_path, datetime.now().isoformat()),
+             local_path, datetime.now().isoformat(), exif_device, exif_gps),
         )
         await self.conn.commit()
 

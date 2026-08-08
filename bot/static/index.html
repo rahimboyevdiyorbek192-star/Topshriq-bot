@@ -1089,22 +1089,32 @@ function mgrDetailPage() {
       const exifHtml = exif
         ? `<div style="font-size:10px;color:var(--hint);margin-top:2px">📷 Olingan: ${esc(exif)}</div>`
         : '';
+      const deviceHtml = s.exif_device
+        ? `<div style="font-size:10px;color:var(--hint);margin-top:2px">📱 ${esc(s.exif_device)}</div>`
+        : '';
       const oldHtml = s.is_old_photo
         ? '<div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:2px">⚠️ Eski rasm — 24 soatdan oldin olingan</div>'
         : '';
       const locHtml = (s.submit_lat != null && s.submit_lon != null)
         ? `<div style="font-size:11px;margin-top:3px">
              📍 <a href="https://www.google.com/maps?q=${s.submit_lat},${s.submit_lon}" target="_blank"
-                  style="color:var(--primary);text-decoration:none">Yuborgan joyi</a>
+                  style="color:var(--primary);text-decoration:none">Yuborish joyi</a>
+             ${s.exif_gps ? `· <a href="https://www.google.com/maps?q=${esc(s.exif_gps)}" target="_blank"
+               style="color:var(--primary);text-decoration:none">Rasm olingan joy</a>` : ''}
            </div>`
-        : '<div style="font-size:11px;color:var(--warning);margin-top:3px">📍 Joylashuv yo\'q</div>';
+        : s.exif_gps
+          ? `<div style="font-size:11px;margin-top:3px">
+               📍 <a href="https://www.google.com/maps?q=${esc(s.exif_gps)}" target="_blank"
+                    style="color:var(--primary);text-decoration:none">Rasm olingan joy</a>
+             </div>`
+          : '<div style="font-size:11px;color:var(--warning);margin-top:3px">📍 Joylashuv yo\'q</div>';
       return `
       <div class="sub-item">
         <div class="sub-avatar">${esc(initials(s.full_name))}</div>
         <div class="sub-info">
           <div class="sub-name">${esc(s.full_name)}</div>
           <div class="sub-time">${esc(fmtDate(s.submitted_at))}${s.note ? ' · ' + esc(String(s.note).slice(0,40)) : ''}</div>
-          ${exifHtml}${oldHtml}${locHtml}
+          ${exifHtml}${deviceHtml}${oldHtml}${locHtml}
         </div>
         ${s.file_id
           ? `<button class="btn btn-ghost btn-sm" data-act="file" data-fid="${esc(s.file_id)}" data-fname="${esc(s.file_name || 'fayl')}">⬇️</button>`
@@ -1231,10 +1241,14 @@ function empDetailPage() {
         <span class="upload-lbl">Fayl yoki rasm tanlash</span>
         <span class="upload-hint">Word, Excel, PDF, JPG/JPEG · Bir nechta mumkin · Maksimum 50 MB</span>
       </div>
-      <div style="margin-top:6px;display:flex;justify-content:center">
+      <div style="margin-top:6px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <label class="btn btn-ghost btn-sm" style="cursor:pointer">
-          📷 Kamera bilan rasm olish
-          <input id="finput-cam" type="file" accept="image/jpeg" capture="camera" style="display:none">
+          📷 Kamera
+          <input id="finput-cam" type="file" accept="image/jpeg,image/png" capture="camera" style="display:none">
+        </label>
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+          🖼️ Galereya
+          <input id="finput-gallery" type="file" accept="image/*" multiple style="display:none">
         </label>
       </div>
       <div class="sel-files" id="sfiles"></div>
@@ -1250,12 +1264,13 @@ function empDetailPage() {
   </div>`;
 }
 
-function onFilesPicked(files) {
-  S.selFiles = Array.prototype.slice.call(files);
+function onFilesPicked(files, replace) {
+  const newFiles = Array.prototype.slice.call(files);
+  S.selFiles = replace ? newFiles : S.selFiles.concat(newFiles);
   const total = S.selFiles.reduce((a, f) => a + f.size, 0);
   if (total > MAX_UPLOAD) {
     showAlert(`Fayllar hajmi ${fsize(total)} — maksimum 50 MB. Kamroq fayl tanlang.`);
-    S.selFiles = [];
+    S.selFiles = replace ? [] : S.selFiles.slice(0, S.selFiles.length - newFiles.length);
   }
   renderSelFiles();
 }
@@ -2506,8 +2521,9 @@ document.addEventListener('click', ev => {
 });
 
 document.addEventListener('change', ev => {
-  if (ev.target.id === 'finput' || ev.target.id === 'finput-cam')
-    onFilesPicked(ev.target.files);
+  if (ev.target.id === 'finput')           onFilesPicked(ev.target.files, true);   // asosiy — almashtiradi
+  if (ev.target.id === 'finput-cam')       onFilesPicked(ev.target.files, false);  // kamera — qo'shadi
+  if (ev.target.id === 'finput-gallery')   onFilesPicked(ev.target.files, false);  // galereya — qo'shadi
 });
 
 document.addEventListener('input', ev => {

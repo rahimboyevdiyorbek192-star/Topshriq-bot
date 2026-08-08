@@ -58,24 +58,60 @@ def _unique_arcname(folder: str, fname: str, used: set[str]) -> str:
 
 
 # ── Rasm tekshiruvi (EXIF) ────────────────────────────────
-def _extract_exif_date(data: bytes, filename: str) -> str | None:
-    """JPG/JPEG rasimidan EXIF DateTimeOriginal sanani oladi."""
+def _extract_exif_info(
+    data: bytes, filename: str
+) -> tuple[str | None, str | None, str | None]:
+    """JPG/JPEG rasimidan (exif_date, exif_device, exif_gps) qaytaradi."""
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in ("jpg", "jpeg"):
-        return None
+        return None, None, None
     try:
         from PIL import Image
-        img = Image.open(io.BytesIO(data))
-        exif = img.getexif()
+        img   = Image.open(io.BytesIO(data))
+        exif  = img.getexif()
         if not exif:
-            return None
-        for tag_id in (36867, 36868, 306):   # DateTimeOriginal, DateTimeDigitized, DateTime
+            return None, None, None
+
+        exif_date: str | None = None
+        for tag_id in (36867, 36868, 306):
             val = exif.get(tag_id)
             if val:
-                return str(val)
+                exif_date = str(val)
+                break
+
+        make  = (exif.get(271) or "").strip()
+        model = (exif.get(272) or "").strip()
+        exif_device: str | None = None
+        if make or model:
+            parts = [x for x in [make, model] if x]
+            if len(parts) == 2 and model.startswith(make):
+                parts = [model]
+            exif_device = " ".join(parts)
+
+        exif_gps: str | None = None
+        try:
+            gps = exif.get_ifd(0x8825)
+            lat_dms = gps.get(2)
+            lat_ref = gps.get(1, "N")
+            lon_dms = gps.get(4)
+            lon_ref = gps.get(3, "E")
+            if lat_dms and lon_dms:
+                def dms2dd(dms, ref):
+                    d, m, s = [float(x) for x in dms]
+                    dd = d + m / 60 + s / 3600
+                    return -dd if ref in ("S", "W") else dd
+                exif_gps = f"{round(dms2dd(lat_dms, lat_ref), 6)},{round(dms2dd(lon_dms, lon_ref), 6)}"
+        except Exception:
+            pass
+
+        return exif_date, exif_device, exif_gps
     except Exception:
         pass
-    return None
+    return None, None, None
+
+
+def _extract_exif_date(data: bytes, filename: str) -> str | None:
+    return _extract_exif_info(data, filename)[0]
 
 
 def _is_old_photo(exif_str: str | None, submitted_at: str) -> bool:
@@ -347,6 +383,8 @@ async def handle_task_detail(request: web.Request) -> web.Response:
                 "note":         s["note"],
                 "submitted_at": s["submitted_at"],
                 "exif_date":    s["exif_date"],
+                "exif_device":  s["exif_device"],
+                "exif_gps":     s["exif_gps"],
                 "is_old_photo": _is_old_photo(s["exif_date"], s["submitted_at"] or ""),
                 "submit_lat":   s["submit_lat"],
                 "submit_lon":   s["submit_lon"],
@@ -661,7 +699,7 @@ async def handle_submit(request: web.Request) -> web.Response:
     note: str | None        = None
     lat_raw: str | None     = None
     lon_raw: str | None     = None
-    pending: list[tuple[str, bytes, str | None]] = []  # (fname, data, exif_date)
+    pending: list[tuple[str, bytes, str | None, str | None, str | None]] = []  # (fname, data, exif_date, exif_device, exif_gps)
 
     try:
         if (request.content_type or "").startswith("multipart/"):
@@ -679,7 +717,7 @@ async def handle_submit(request: web.Request) -> web.Response:
                     fdata = await field.read()
                     if fdata:
                         fname = field.filename or "fayl"
-                        pending.append((fname, fdata, _extract_exif_date(fdata, fname)))
+                        pending.append((fname, fdata, *_extract_exif_info(fdata, fname)))
         else:
             # Faylsiz (faqat izohli) topshirish oddiy forma sifatida ham kelishi mumkin
             form        = await request.post()
@@ -721,8 +759,8 @@ async def handle_submit(request: web.Request) -> web.Response:
         await db.add_employee(user_id, full_name, user.get("username"))
 
     # ── 3. Fayllarni disk'ga saqlash + Telegram'ga yuborish ──
-    # (disk_path, file_id|None, fname, exif_date)
-    uploaded: list[tuple[str, str | None, str, str | None]] = []
+    # (disk_path, file_id|None, fname, exif_date, exif_device, exif_gps)
+    uploaded: list[tuple[str, str | None, str, str | None, str | None, str | None]] = []
 
     uploads_dir = Path(config.db_path).resolve().parent / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
@@ -736,7 +774,7 @@ async def handle_submit(request: web.Request) -> web.Response:
     if pending:
         from aiogram.types import BufferedInputFile
         uname = f"@{user['username']}" if user.get("username") else full_name
-        for idx, (fname, fdata, exif_d) in enumerate(pending):
+        for idx, (fname, fdata, exif_d, exif_dev, exif_g) in enumerate(pending):
             # Disk'ga saqlash (har doim)
             safe = _safe_filename(fname)
             disk_path = uploads_dir / f"{uuid.uuid4().hex}_{safe}"
@@ -760,7 +798,7 @@ async def handle_submit(request: web.Request) -> web.Response:
                     except Exception as exc:
                         logger.warning("TG yuborish %s (%s): %s", chat_id, fname, exc)
 
-            uploaded.append((str(disk_path), tg_file_id, fname, exif_d))
+            uploaded.append((str(disk_path), tg_file_id, fname, exif_d, exif_dev, exif_g))
 
     # ── 4. Bazaga yozish ──────────────────────────────────
     try:
@@ -774,11 +812,14 @@ async def handle_submit(request: web.Request) -> web.Response:
             submit_lat=submit_lat,
             submit_lon=submit_lon,
             local_path=first[0] if first else None,
+            exif_device=first[4] if first else None,
+            exif_gps=first[5] if first else None,
         )
-        for disk_p, fid, fname, exif_d in uploaded[1:]:
+        for disk_p, fid, fname, exif_d, exif_dev, exif_g in uploaded[1:]:
             await db.add_submission_file(
                 task_id, user_id, fid, fname,
                 exif_date=exif_d, local_path=disk_p,
+                exif_device=exif_dev, exif_gps=exif_g,
             )
     except Exception as exc:
         logger.error("Submit bazaga yozilmadi: %s", exc, exc_info=True)
