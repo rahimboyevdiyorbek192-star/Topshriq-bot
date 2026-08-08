@@ -646,3 +646,78 @@ class Database:
             (task_id,),
         )
         return list(await cur.fetchall())
+
+    # ---------- KPI ----------
+
+    async def get_employee_kpi(self, employee_id: int, year: int) -> dict:
+        """Bir xodimning yillik KPI ko'rsatkichlari, choraklar bo'yicha."""
+        cur = await self.conn.execute(
+            """
+            SELECT t.id, t.created_at,
+                   CASE WHEN s.employee_id IS NOT NULL THEN 1 ELSE 0 END AS submitted
+            FROM tasks t
+            LEFT JOIN submissions s ON s.task_id = t.id AND s.employee_id = ?
+            WHERE strftime('%Y', t.created_at) = ?
+            """,
+            (employee_id, str(year)),
+        )
+        rows = list(await cur.fetchall())
+
+        quarters: dict = {q: {"total": 0, "done": 0, "months": {}} for q in range(1, 5)}
+        for row in rows:
+            try:
+                d = datetime.fromisoformat(row["created_at"])
+            except Exception:
+                continue
+            q = (d.month - 1) // 3 + 1
+            m = d.month
+            quarters[q]["total"] += 1
+            if row["submitted"]:
+                quarters[q]["done"] += 1
+            mq = quarters[q]["months"]
+            if m not in mq:
+                mq[m] = {"total": 0, "done": 0}
+            mq[m]["total"] += 1
+            if row["submitted"]:
+                mq[m]["done"] += 1
+        return quarters
+
+    async def get_all_employees_kpi_summary(self, year: int) -> list:
+        """Barcha faol xodimlarning yillik KPI xulosasi, choraklar bo'yicha."""
+        cur = await self.conn.execute(
+            """
+            SELECT e.tg_id, e.full_name, e.username,
+                   CAST(strftime('%m', t.created_at) AS INTEGER) AS month,
+                   CASE WHEN s.employee_id IS NOT NULL THEN 1 ELSE 0 END AS submitted
+            FROM employees e
+            CROSS JOIN tasks t
+            LEFT JOIN submissions s ON s.task_id = t.id AND s.employee_id = e.tg_id
+            WHERE e.active = 1
+              AND strftime('%Y', t.created_at) = ?
+            """,
+            (str(year),),
+        )
+        rows = list(await cur.fetchall())
+
+        emp_map: dict[int, dict] = {}
+        for row in rows:
+            eid = row["tg_id"]
+            if eid not in emp_map:
+                emp_map[eid] = {
+                    "id": eid,
+                    "name": row["full_name"],
+                    "username": row["username"],
+                    "quarters": {q: {"total": 0, "done": 0} for q in range(1, 5)},
+                }
+            q = (row["month"] - 1) // 3 + 1
+            emp_map[eid]["quarters"][q]["total"] += 1
+            if row["submitted"]:
+                emp_map[eid]["quarters"][q]["done"] += 1
+
+        def avg_pct(e: dict) -> float:
+            qs = e["quarters"]
+            total = sum(qs[q]["total"] for q in range(1, 5))
+            done  = sum(qs[q]["done"]  for q in range(1, 5))
+            return done / total if total else 0.0
+
+        return sorted(emp_map.values(), key=avg_pct, reverse=True)

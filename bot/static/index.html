@@ -357,6 +357,82 @@ textarea.form-input{resize:vertical;min-height:90px}
 .items-center{align-items:center}.justify-between{justify-content:space-between}
 .mt-8{margin-top:8px}.mt-12{margin-top:12px}
 .text-hint{color:var(--hint)}.text-sm{font-size:13px}
+
+/* ── Tarix: Kalendar ─────────────────────────────────────── */
+.hist-search{
+  flex:1;min-width:130px;padding:8px 12px;
+  border:1.5px solid var(--border);border-radius:8px;
+  background:var(--bg);color:var(--text);font-size:14px;outline:none;
+  transition:border-color .15s;width:100%;margin-top:8px;
+}
+.hist-search:focus{border-color:var(--primary)}
+.hist-st-btn{
+  padding:7px 12px;border-radius:8px;border:1.5px solid var(--border);
+  background:none;color:var(--hint);font-size:13px;font-weight:500;cursor:pointer;
+  transition:all .15s;white-space:nowrap;
+}
+.hist-st-btn:hover{border-color:var(--primary);color:var(--primary)}
+.hist-st-btn.active{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cal-nav-title{font-size:14px;font-weight:700}
+.cal-nav-btn{
+  width:32px;height:32px;border-radius:8px;border:1.5px solid var(--border);
+  background:none;color:var(--text);font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:background .12s;
+}
+.cal-nav-btn:hover{background:var(--bg)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-head{text-align:center;font-size:10px;font-weight:700;color:var(--hint);padding:4px 2px 6px;text-transform:uppercase}
+.cal-cell{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;padding:2px;transition:background .12s}
+.cal-cell.cal-has-tasks{cursor:pointer}
+.cal-cell.cal-has-tasks:hover{background:var(--bg)}
+.cal-day-num{font-size:12px;line-height:1;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%}
+.cal-cell.cal-today .cal-day-num{background:var(--primary);color:#fff;font-weight:700}
+.cal-cell.cal-selected{background:var(--primary-lt)}
+.cal-cell.cal-selected .cal-day-num{color:var(--primary);font-weight:700}
+.cal-dots{display:flex;gap:2px;margin-top:2px;min-height:5px}
+.cal-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.cal-dot-open{background:var(--warning)}
+.cal-dot-closed{background:var(--success)}
+.cal-clear-row{text-align:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.hist-group-hdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--hint);padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:10px}
+
+/* ── KPI ─────────────────────────────────────────────────── */
+.kpi-grade-a{color:var(--success)}
+.kpi-grade-b{color:var(--warning)}
+.kpi-grade-c{color:#e65100}
+.kpi-grade-d{color:var(--danger)}
+.kpi-grade-none{color:var(--hint)}
+.kpi-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;margin-top:4px;
+}
+.kpi-badge-a{background:var(--success-bg);color:var(--success)}
+.kpi-badge-b{background:var(--warning-bg);color:var(--warning)}
+.kpi-badge-c{background:#fff3e0;color:#e65100}
+.kpi-badge-d{background:var(--danger-bg);color:var(--danger)}
+.kpi-badge-none{background:var(--bg);color:var(--hint)}
+.kpi-score-num{font-size:40px;font-weight:800;line-height:1}
+.kpi-q-card{border-left:3px solid var(--border);margin-bottom:10px}
+.kpi-q-current{border-left-color:var(--primary)}
+.kpi-q-empty{opacity:.55}
+.kpi-q-head{display:flex;align-items:center;justify-content:space-between}
+.kpi-q-num{font-size:15px;font-weight:700;margin-right:6px}
+.kpi-q-mlbl{font-size:12px;color:var(--hint)}
+.kpi-q-score{font-size:22px;font-weight:800}
+.kpi-month-row{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px}
+.kpi-month-name{width:64px;color:var(--hint);flex-shrink:0}
+.kpi-month-bar{flex:1;display:flex;align-items:center;gap:6px}
+.kpi-month-pct{width:34px;text-align:right;font-weight:600;flex-shrink:0;font-size:11px}
+.kpi-month-cnt{width:34px;text-align:right;color:var(--hint);flex-shrink:0;font-size:11px}
+.kpi-emp-row{cursor:pointer}
+.kpi-emp-row:hover td{background:var(--primary-lt)!important}
+.kpi-cell-a{color:var(--success);font-weight:700}
+.kpi-cell-b{color:var(--warning);font-weight:700}
+.kpi-cell-c{color:#e65100;font-weight:700}
+.kpi-cell-d{color:var(--danger);font-weight:700}
+.kpi-cell-none{color:var(--hint)}
+.kpi-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--hint);margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
 </style>
 </head>
 <body>
@@ -397,6 +473,14 @@ function freshState() {
     selFiles:[], note:'',
     trackEmpId: null, trackEmpName: '', trackDate: '',
     history: [],
+    histCalYear: new Date().getFullYear(),
+    histCalMonth: new Date().getMonth(),
+    histFilter: {status:'all', search:'', date:null},
+    kpiYear: new Date().getFullYear(),
+    kpiData: null,
+    kpiView: 'summary',
+    kpiEmpId: null,
+    kpiEmpData: null,
   };
 }
 let S = freshState();
@@ -588,6 +672,7 @@ function updatePage() {
     'create-task': "Topshiriq qo'shish",
     'employees':   'Xodimlar',
     'history':     'Tarix',
+    'kpi':         'KPI Natijalar',
   };
   const mh = document.getElementById('mh-t');
   if (mh) mh.textContent = titles[S.page] || 'Topshiriqlar';
@@ -599,6 +684,7 @@ function updatePage() {
   else if (S.page === 'map')         { pc.innerHTML = mapPage(); loadLiveMap(); }
   else if (S.page === 'track-emp')   { pc.innerHTML = trackEmpPage(); loadEmpTrack(S.trackDate); }
   else if (S.page === 'history')     { pc.innerHTML = historyPage(); loadHistory(); }
+  else if (S.page === 'kpi')         { pc.innerHTML = kpiPage(); loadKpi(); }
 }
 
 function gotoPage(page, extra) {
@@ -606,6 +692,7 @@ function gotoPage(page, extra) {
   else if (page === 'employees') loadEmployees().then(() => render({page:'employees'}));
   else if (page === 'track-emp' && extra) render({page:'track-emp', ...extra});
   else if (page === 'history') render({page:'history'});
+  else if (page === 'kpi') render({page:'kpi', kpiView:'summary', kpiEmpId:null, kpiEmpData:null});
   else render({page});
 }
 
@@ -658,6 +745,9 @@ function shell() {
         <button class="nav-item ${S.page === 'history' ? 'active' : ''}" data-act="page" data-page="history">
           <span class="nav-icon">📅</span> Tarix
         </button>
+        <button class="nav-item ${S.page === 'kpi' ? 'active' : ''}" data-act="page" data-page="kpi">
+          <span class="nav-icon">📊</span> KPI
+        </button>
         ${mgrNav}
       </nav>
       <div class="sb-footer">${logoutBtn}</div>
@@ -680,6 +770,9 @@ function shell() {
       </button>
       <button class="bnav-item ${S.page === 'history' ? 'active' : ''}" data-act="page" data-page="history">
         <span class="bnav-icon">📅</span>Tarix
+      </button>
+      <button class="bnav-item ${S.page === 'kpi' ? 'active' : ''}" data-act="page" data-page="kpi">
+        <span class="bnav-icon">📊</span>KPI
       </button>
       ${mgrBnav}
     </div>
@@ -1598,107 +1691,154 @@ async function delEmp(tgId) {
    Tarix
    ════════════════════════════════════════════════════════════ */
 function historyPage() {
+  const f = S.histFilter || {status:'all', search:'', date:null};
   return `
-  <div class="detail-body pad-nav">
+  <div class="detail-body pad-nav" style="display:flex;flex-direction:column;gap:12px;padding-top:14px">
     <div class="sec-card">
-      <div class="flex items-center justify-between" style="margin-bottom:12px">
-        <div>
-          <div style="font-size:17px;font-weight:700">📅 Tarix</div>
-          <div class="text-hint text-sm">Barcha topshiriqlar — ochiq va yopilgan</div>
-        </div>
+      <div style="margin-bottom:10px">
+        <div style="font-size:16px;font-weight:700">📅 Tarix</div>
+        <div class="text-hint text-sm">Barcha topshiriqlar — ochiq va yopilgan</div>
       </div>
-      <div id="hist-list">
-        <div class="center-box" style="padding:24px"><div class="spinner"></div></div>
+      <input type="text" id="hist-search" class="hist-search"
+             placeholder="🔍 Qidirish..." value="${esc(f.search)}">
+      <div style="display:flex;gap:4px;margin-top:8px">
+        <button class="hist-st-btn ${f.status==='all'?'active':''}" data-act="hist-status" data-status="all">Hammasi</button>
+        <button class="hist-st-btn ${f.status==='open'?'active':''}" data-act="hist-status" data-status="open">Ochiq</button>
+        <button class="hist-st-btn ${f.status==='closed'?'active':''}" data-act="hist-status" data-status="closed">Yopilgan</button>
       </div>
+    </div>
+    <div class="sec-card" id="hist-calendar">
+      <div class="center-box" style="padding:12px"><div class="spinner"></div></div>
+    </div>
+    <div class="sec-card" id="hist-list">
+      <div class="center-box" style="padding:24px"><div class="spinner"></div></div>
     </div>
   </div>`;
 }
 
 async function loadHistory() {
-  const wrap = document.getElementById('hist-list');
-  if (!wrap) return;
-
+  if (!S.histFilter) S.histFilter = {status:'all', search:'', date:null};
   const data = await api('/api/tasks/history');
+  const wrap = document.getElementById('hist-list');
+
   if (!data || data.error) {
-    wrap.innerHTML = `<p class="text-hint" style="text-align:center;padding:20px">${esc((data&&data.error)||'Xatolik')}</p>`;
+    if (wrap) wrap.innerHTML = `<p class="text-hint" style="text-align:center;padding:20px">${esc((data&&data.error)||'Xatolik')}</p>`;
     return;
   }
 
   S.history = data.tasks || [];
-  if (!S.history.length) {
-    wrap.innerHTML = '<p class="text-hint" style="text-align:center;padding:24px">Topshiriqlar yo\'q.</p>';
-    return;
+  renderCalendar();
+  renderHistList();
+}
+
+function renderCalendar() {
+  const wrap = document.getElementById('hist-calendar');
+  if (!wrap) return;
+
+  const year  = S.histCalYear;
+  const month = S.histCalMonth;
+  const now   = new Date();
+
+  const byDate = {};
+  (S.history || []).forEach(t => {
+    if (!t.deadline) return;
+    const d = t.deadline.split('T')[0];
+    if (!byDate[d]) byDate[d] = {open:0, closed:0};
+    if (t.status === 'open') byDate[d].open++; else byDate[d].closed++;
+  });
+
+  const monthLbl = new Date(year, month, 1).toLocaleDateString('uz-UZ', {year:'numeric', month:'long'});
+  const dayNames = ['Du','Se','Ch','Pa','Ju','Sh','Ya'];
+  let startDow = new Date(year, month, 1).getDay();
+  startDow = (startDow + 6) % 7;
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+
+  let cells = '';
+  for (let i = 0; i < startDow; i++) cells += '<div class="cal-cell"></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const info = byDate[ds];
+    const isToday = year===now.getFullYear()&&month===now.getMonth()&&d===now.getDate();
+    const isSel   = S.histFilter && S.histFilter.date === ds;
+    let dots = '';
+    if (info) {
+      if (info.open)   dots += '<span class="cal-dot cal-dot-open"></span>';
+      if (info.closed) dots += '<span class="cal-dot cal-dot-closed"></span>';
+    }
+    cells += `<div class="cal-cell ${isToday?'cal-today':''} ${isSel?'cal-selected':''} ${info?'cal-has-tasks':''}"
+                   ${info?`data-act="cal-date" data-date="${ds}"`:''}
+                   title="${info?(info.open+info.closed)+' ta topshiriq':''}">
+      <span class="cal-day-num">${d}</span>
+      <div class="cal-dots">${dots}</div>
+    </div>`;
   }
 
-  /* Oylar bo'yicha guruh */
+  const clearRow = (S.histFilter && S.histFilter.date)
+    ? `<div class="cal-clear-row"><button class="btn btn-ghost btn-sm" data-act="cal-clear">✕ Sanani tozalash</button></div>`
+    : '';
+
+  wrap.innerHTML = `
+    <div class="cal-nav">
+      <button class="cal-nav-btn" data-act="cal-prev">‹</button>
+      <span class="cal-nav-title">${esc(monthLbl)}</span>
+      <button class="cal-nav-btn" data-act="cal-next">›</button>
+    </div>
+    <div class="cal-grid">
+      ${dayNames.map(n=>`<div class="cal-head">${n}</div>`).join('')}
+      ${cells}
+    </div>
+    <div style="display:flex;gap:12px;margin-top:10px;font-size:11px;color:var(--hint)">
+      <span><span class="cal-dot cal-dot-open" style="display:inline-block;vertical-align:middle;margin-right:3px"></span>Ochiq</span>
+      <span><span class="cal-dot cal-dot-closed" style="display:inline-block;vertical-align:middle;margin-right:3px"></span>Yopilgan</span>
+    </div>${clearRow}`;
+}
+
+function renderHistList() {
+  const wrap = document.getElementById('hist-list');
+  if (!wrap) return;
+
+  const f = S.histFilter || {status:'all', search:'', date:null};
+  let tasks = S.history || [];
+  if (f.status === 'open')   tasks = tasks.filter(t => t.status === 'open');
+  if (f.status === 'closed') tasks = tasks.filter(t => t.status !== 'open');
+  if (f.search) { const q=f.search.toLowerCase(); tasks=tasks.filter(t=>t.title.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q)); }
+  if (f.date)   tasks = tasks.filter(t => t.deadline && t.deadline.startsWith(f.date));
+
+  if (!tasks.length) { wrap.innerHTML='<p class="text-hint" style="text-align:center;padding:24px">Topshiriqlar topilmadi.</p>'; return; }
+
   const months = {};
-  S.history.forEach(t => {
-    const d   = t.created_at ? new Date(t.created_at) : new Date();
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    const lbl = d.toLocaleDateString('uz-UZ', {year:'numeric', month:'long'});
-    if (!months[key]) months[key] = {label: lbl, tasks: []};
+  tasks.forEach(t => {
+    const d=t.created_at?new Date(t.created_at):new Date();
+    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const lbl=d.toLocaleDateString('uz-UZ',{year:'numeric',month:'long'});
+    if(!months[key]) months[key]={label:lbl,tasks:[]};
     months[key].tasks.push(t);
   });
 
   const html = Object.keys(months).sort().reverse().map(key => {
-    const {label, tasks} = months[key];
-    const cards = tasks.map(t => {
-      const dl   = deadlineInfo(t.deadline);
-      const isOpen = t.status === 'open';
-      const statusBadge = isOpen
-        ? '<span class="badge badge-wait">⏳ Ochiq</span>'
-        : '<span class="badge" style="background:var(--border);color:var(--hint)">⬛ Yopilgan</span>';
-      const myBadge = t.submitted_by_me
-        ? '<span class="badge badge-done" style="font-size:10px">✅ Topshirdim</span>'
-        : (!S.isManager ? '<span class="badge badge-over" style="font-size:10px">❌ Topshirmadim</span>' : '');
-      const p = pct(t.done_count, t.total_count);
-      const dlHtml = t.deadline
-        ? `<span class="${dl.cls||''}">📅 ${esc(dl.date)}</span>`
-        : '<span class="text-hint">Muddatsiz</span>';
-
-      /* Xodim uchun yuklab olish tugmasi */
-      let dlBtn = '';
-      if (!S.isManager && t.my_submission && t.my_submission.file_id) {
-        dlBtn = `<button class="btn btn-ghost btn-sm" style="margin-top:6px"
-                   data-act="file" data-fid="${esc(t.my_submission.file_id)}"
-                   data-fname="${esc(t.my_submission.file_name||'fayl')}">
-                   ⬇️ ${esc(t.my_submission.file_name||'Fayl')}
-                 </button>`;
-      }
-
-      return `
-      <div class="task-card" data-act="task" data-id="${t.id}" style="cursor:pointer">
-        <div class="tc-head">
-          <div class="flex gap-8 flex-wrap items-center">
-            <span class="tc-num">#${t.id}</span>
-            ${statusBadge}
-            ${myBadge}
-          </div>
-        </div>
+    const {label, tasks:mt} = months[key];
+    const cards = mt.map(t => {
+      const dl=deadlineInfo(t.deadline);
+      const isOpen=t.status==='open';
+      const statusBadge=isOpen?'<span class="badge badge-wait">⏳ Ochiq</span>':'<span class="badge" style="background:var(--border);color:var(--hint)">⬛ Yopilgan</span>';
+      const myBadge=t.submitted_by_me?'<span class="badge badge-done" style="font-size:10px">✅ Topshirdim</span>':(!S.isManager?'<span class="badge badge-over" style="font-size:10px">❌ Topshirmadim</span>':'');
+      const p=pct(t.done_count,t.total_count);
+      const dlHtml=t.deadline?`<span class="${dl.cls||''}">📅 ${esc(dl.date)}</span>`:'<span class="text-hint">Muddatsiz</span>';
+      let dlBtn='';
+      if(!S.isManager&&t.my_submission&&t.my_submission.file_id)
+        dlBtn=`<button class="btn btn-ghost btn-sm" style="margin-top:6px" data-act="file" data-fid="${esc(t.my_submission.file_id)}" data-fname="${esc(t.my_submission.file_name||'fayl')}">⬇️ ${esc(t.my_submission.file_name||'Fayl')}</button>`;
+      return `<div class="task-card" data-act="task" data-id="${t.id}" style="cursor:pointer">
+        <div class="tc-head"><div class="flex gap-8 flex-wrap items-center"><span class="tc-num">#${t.id}</span>${statusBadge}${myBadge}</div></div>
         <div class="tc-title">${esc(t.title)}</div>
-        <div class="tc-meta flex gap-8 flex-wrap" style="margin-top:4px">
-          ${dlHtml}
-          <span class="text-hint">👥 ${t.done_count}/${t.total_count}</span>
-        </div>
-        <div class="prog-wrap">
-          <div class="prog-bar"><div class="prog-fill ${pgCls(p)}" style="width:${p}%"></div></div>
-          <div class="prog-text">${p}% bajarildi</div>
-        </div>
+        <div class="tc-meta flex gap-8 flex-wrap" style="margin-top:4px">${dlHtml}<span class="text-hint">👥 ${t.done_count}/${t.total_count}</span></div>
+        <div class="prog-wrap"><div class="prog-bar"><div class="prog-fill ${pgCls(p)}" style="width:${p}%"></div></div><div class="prog-text">${p}% bajarildi</div></div>
         ${dlBtn}
       </div>`;
     }).join('');
-
-    return `
-    <div style="margin-bottom:20px">
-      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
-                  color:var(--hint);padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:10px">
-        ${esc(label)}
-      </div>
-      <div class="tasks-container" style="padding:0;gap:8px">${cards}</div>
-    </div>`;
+    return `<div style="margin-bottom:20px"><div class="hist-group-hdr">${esc(label)}</div><div class="tasks-container" style="padding:0;gap:8px">${cards}</div></div>`;
   }).join('');
 
-  wrap.innerHTML = html;
+  wrap.innerHTML = html || '<p class="text-hint" style="text-align:center;padding:24px">Topshiriqlar topilmadi.</p>';
 }
 
 /* ── Topshiriqni o'chirish (rahbar) ─── */
@@ -1715,6 +1855,271 @@ async function doDeleteTask(id) {
   S.history = (S.history||[]).filter(x => x.id !== id);
   toast("🗑️ Topshiriq o'chirildi");
   gotoPage('tasks');
+}
+
+/* ════════════════════════════════════════════════════════════
+   KPI tizimi
+   ════════════════════════════════════════════════════════════ */
+const Q_META = {
+  1:{name:'Q1',months:'Yanvar–Mart',   mList:[1,2,3]},
+  2:{name:'Q2',months:'Aprel–Iyun',    mList:[4,5,6]},
+  3:{name:'Q3',months:'Iyul–Sentabr',  mList:[7,8,9]},
+  4:{name:'Q4',months:'Oktabr–Dekabr', mList:[10,11,12]},
+};
+const M_NAMES_UZ = ['','Yanvar','Fevral','Mart','Aprel','May','Iyun',
+                    'Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
+
+function kpiGrade(p) {
+  if (p === null || p === undefined) return {icon:'—', label:'—', cls:'kpi-grade-none', badgeCls:'kpi-badge-none', cellCls:'kpi-cell-none'};
+  if (p >= 90) return {icon:'🥇', label:"A'lo",      cls:'kpi-grade-a', badgeCls:'kpi-badge-a', cellCls:'kpi-cell-a'};
+  if (p >= 70) return {icon:'🥈', label:'Yaxshi',    cls:'kpi-grade-b', badgeCls:'kpi-badge-b', cellCls:'kpi-cell-b'};
+  if (p >= 50) return {icon:'🥉', label:"O'rtacha",  cls:'kpi-grade-c', badgeCls:'kpi-badge-c', cellCls:'kpi-cell-c'};
+  return              {icon:'⚠️', label:'Past',       cls:'kpi-grade-d', badgeCls:'kpi-badge-d', cellCls:'kpi-cell-d'};
+}
+
+function kpiPct(done, total) {
+  return total > 0 ? Math.round(done / total * 100) : null;
+}
+
+function kpiPage() {
+  return `<div class="detail-body pad-nav" style="padding-top:14px">
+    <div class="center-box" style="padding:32px"><div class="spinner"></div></div>
+  </div>`;
+}
+
+async function loadKpi() {
+  const data = await api(`/api/kpi?year=${S.kpiYear}`);
+  if (!data || data.error) {
+    const pc = document.getElementById('page-content');
+    if (pc) pc.innerHTML = `<div class="center-box pad-nav"><p>${esc((data&&data.error)||'Xatolik')}</p></div>`;
+    return;
+  }
+  S.kpiData = data;
+  renderKpi();
+}
+
+function renderKpi() {
+  const pc = document.getElementById('page-content');
+  if (!pc) return;
+  if (S.isManager) {
+    if (S.kpiView === 'detail' && S.kpiEmpData) pc.innerHTML = kpiEmpDetailHtml(S.kpiEmpData);
+    else pc.innerHTML = kpiManagerHtml(S.kpiData || {employees:[], year:S.kpiYear, is_manager:true});
+  } else {
+    pc.innerHTML = kpiEmployeeHtml(S.kpiData || {quarters:{}, year:S.kpiYear});
+  }
+}
+
+function kpiYearNav(year) {
+  return `<div style="display:flex;align-items:center;gap:10px">
+    <button class="btn btn-ghost btn-sm" data-act="kpi-year" data-dir="-1" style="font-size:18px;padding:4px 10px">‹</button>
+    <span style="font-weight:700;font-size:15px">${year} yil</span>
+    <button class="btn btn-ghost btn-sm" data-act="kpi-year" data-dir="1" style="font-size:18px;padding:4px 10px">›</button>
+  </div>`;
+}
+
+function kpiQuarterCard(qNum, qData, showMonths) {
+  const now = new Date();
+  const curQ = Math.floor(now.getMonth() / 3) + 1;
+  const isCurrentQ = (qNum === curQ) && (S.kpiYear === now.getFullYear());
+  const p = kpiPct(qData.done, qData.total);
+  const g = kpiGrade(p);
+  const meta = Q_META[qNum];
+  const empty = !qData.total;
+
+  let monthsHtml = '';
+  if (showMonths && qData.months && !empty) {
+    monthsHtml = meta.mList.map(m => {
+      const mv = qData.months[String(m)];
+      if (!mv) return '';
+      const mp = kpiPct(mv.done, mv.total);
+      const mg = kpiGrade(mp);
+      return `<div class="kpi-month-row">
+        <span class="kpi-month-name">${M_NAMES_UZ[m]}</span>
+        <div class="kpi-month-bar">
+          <div class="prog-bar" style="flex:1">
+            <div class="prog-fill ${pgCls(mp||0)}" style="width:${mp||0}%"></div>
+          </div>
+          <span class="kpi-month-pct ${mg.cls}">${mp!==null?mp+'%':'—'}</span>
+        </div>
+        <span class="kpi-month-cnt">${mv.done}/${mv.total}</span>
+      </div>`;
+    }).join('');
+  }
+
+  return `<div class="sec-card kpi-q-card ${isCurrentQ?'kpi-q-current':''} ${empty?'kpi-q-empty':''}">
+    <div class="kpi-q-head">
+      <div>
+        <span class="kpi-q-num">${meta.name}</span>
+        <span class="kpi-q-mlbl">${meta.months}</span>
+        ${isCurrentQ?'<span class="badge badge-wait" style="font-size:10px;margin-left:4px">Joriy</span>':''}
+      </div>
+      <span class="kpi-q-score ${g.cls}">${p!==null?p+'%':'—'}</span>
+    </div>
+    ${empty ? '<div class="text-hint text-sm" style="margin-top:6px">Bu chorakda topshiriq yo\'q</div>' : `
+      <div class="prog-wrap" style="margin-top:8px">
+        <div class="prog-bar"><div class="prog-fill ${pgCls(p||0)}" style="width:${p||0}%"></div></div>
+        <div class="prog-text">${qData.done} ta / ${qData.total} ta topshiriq bajarildi</div>
+      </div>${monthsHtml}`}
+  </div>`;
+}
+
+function kpiEmployeeHtml(data) {
+  const year = data.year || S.kpiYear;
+  const qs = data.quarters || {};
+  let totalDone = 0, totalAll = 0;
+  for (let q = 1; q <= 4; q++) {
+    const qd = qs[String(q)] || {done:0, total:0, months:{}};
+    totalDone += qd.done; totalAll += qd.total;
+  }
+  const avgP = kpiPct(totalDone, totalAll);
+  const g = kpiGrade(avgP);
+
+  const cards = [1,2,3,4].map(q => {
+    const qd = qs[String(q)] || {done:0, total:0, months:{}};
+    return kpiQuarterCard(q, qd, true);
+  }).join('');
+
+  return `<div class="detail-body pad-nav" style="display:flex;flex-direction:column;gap:10px;padding-top:14px">
+    <div class="sec-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:16px;font-weight:700">📊 Mening KPI Natijalarim</div>
+          <div class="text-hint text-sm">Topshiriqlar bajarilish foizi</div>
+        </div>
+        ${kpiYearNav(year)}
+      </div>
+      <div style="text-align:center;padding:12px 0 4px">
+        <div class="kpi-score-num ${g.cls}">${avgP!==null?avgP+'%':'—'}</div>
+        <span class="kpi-badge ${g.badgeCls}">${g.icon} ${esc(g.label)} — Yillik o'rtacha</span>
+      </div>
+    </div>
+    ${cards}
+    <div class="sec-card">
+      <div class="kpi-legend">
+        <span>🥇 A'lo (≥90%)</span>
+        <span>🥈 Yaxshi (≥70%)</span>
+        <span>🥉 O'rtacha (≥50%)</span>
+        <span>⚠️ Past (&lt;50%)</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function kpiManagerHtml(data) {
+  const year = data.year || S.kpiYear;
+  const emps = data.employees || [];
+  const search = (document.getElementById('kpi-search')?.value || '').toLowerCase();
+  const filtered = search
+    ? emps.filter(e => e.name.toLowerCase().includes(search))
+    : emps;
+
+  const rows = filtered.map((e, i) => {
+    const qs = e.quarters || {};
+    let td = 0, tt = 0;
+    const cells = [1,2,3,4].map(q => {
+      const qd = qs[String(q)] || {done:0, total:0};
+      td += qd.done; tt += qd.total;
+      const p = kpiPct(qd.done, qd.total);
+      const g = kpiGrade(p);
+      return `<td class="hide-sm ${g.cellCls}" style="text-align:center">${p!==null?p+'%':'—'}</td>`;
+    }).join('');
+    const avgP = kpiPct(td, tt);
+    const ag = kpiGrade(avgP);
+    return `<tr class="kpi-emp-row" data-act="kpi-emp" data-id="${e.id}" data-name="${esc(e.name)}">
+      <td style="color:var(--hint);font-size:12px">${i+1}</td>
+      <td style="font-weight:600">${esc(e.name)}</td>
+      ${cells}
+      <td style="text-align:center;font-weight:800;font-size:16px" class="${ag.cls}">${avgP!==null?avgP+'%':'—'}</td>
+      <td style="text-align:center">${ag.icon}</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="detail-body pad-nav" style="display:flex;flex-direction:column;gap:10px;padding-top:14px">
+    <div class="sec-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:16px;font-weight:700">📊 Hodimlar KPI</div>
+          <div class="text-hint text-sm">${emps.length} ta xodim</div>
+        </div>
+        ${kpiYearNav(year)}
+      </div>
+      <input type="text" id="kpi-search" class="hist-search" placeholder="🔍 Xodim qidirish..."
+             style="margin-top:10px" value="${esc(search)}">
+    </div>
+    <div class="sec-card">
+      <div class="table-wrap">
+        <table class="emp-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Xodim</th>
+              <th class="hide-sm" style="text-align:center">Q1</th>
+              <th class="hide-sm" style="text-align:center">Q2</th>
+              <th class="hide-sm" style="text-align:center">Q3</th>
+              <th class="hide-sm" style="text-align:center">Q4</th>
+              <th style="text-align:center">O'rtacha</th>
+              <th style="text-align:center">Daraja</th>
+            </tr>
+          </thead>
+          <tbody>${rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--hint)">Xodimlar topilmadi</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="sec-card">
+      <div class="kpi-legend">
+        <span>🥇 A'lo (≥90%)</span>
+        <span>🥈 Yaxshi (≥70%)</span>
+        <span>🥉 O'rtacha (≥50%)</span>
+        <span>⚠️ Past (&lt;50%)</span>
+        <span class="text-hint">• Satrga bosib tafsilotni ko'ring</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function kpiEmpDetailHtml(data) {
+  const year = data.year || S.kpiYear;
+  const emp  = data.employee || {};
+  const qs   = data.quarters || {};
+  let td = 0, tt = 0;
+  for (let q = 1; q <= 4; q++) {
+    const qd = qs[String(q)] || {done:0, total:0};
+    td += qd.done; tt += qd.total;
+  }
+  const avgP = kpiPct(td, tt);
+  const g    = kpiGrade(avgP);
+
+  const cards = [1,2,3,4].map(q => {
+    const qd = qs[String(q)] || {done:0, total:0, months:{}};
+    return kpiQuarterCard(q, qd, true);
+  }).join('');
+
+  return `<div class="detail-body pad-nav" style="display:flex;flex-direction:column;gap:10px;padding-top:14px">
+    <button class="btn btn-ghost btn-sm" data-act="kpi-back" style="align-self:flex-start">← Orqaga</button>
+    <div class="sec-card">
+      <div style="font-size:16px;font-weight:700">📊 ${esc(emp.name || 'Xodim')}</div>
+      <div class="text-hint text-sm">${year} yil KPI tafsiloti</div>
+      <div style="text-align:center;padding:12px 0 4px">
+        <div class="kpi-score-num ${g.cls}">${avgP!==null?avgP+'%':'—'}</div>
+        <span class="kpi-badge ${g.badgeCls}">${g.icon} ${esc(g.label)} — Yillik o'rtacha</span>
+      </div>
+    </div>
+    ${cards}
+  </div>`;
+}
+
+async function openKpiEmployee(empId, empName) {
+  S.kpiEmpId = empId;
+  const pc = document.getElementById('page-content');
+  if (pc) pc.innerHTML = `<div class="detail-body pad-nav" style="padding-top:14px">
+    <button class="btn btn-ghost btn-sm" data-act="kpi-back" style="margin-bottom:10px">← Orqaga</button>
+    <div class="center-box" style="padding:32px"><div class="spinner"></div></div>
+  </div>`;
+
+  const data = await api(`/api/kpi/${empId}?year=${S.kpiYear}`);
+  if (!data || data.error) { showAlert((data&&data.error)||'Xatolik'); return; }
+  S.kpiEmpData = data;
+  S.kpiView = 'detail';
+  renderKpi();
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1748,6 +2153,44 @@ document.addEventListener('click', ev => {
     case 'track-back':  gotoPage('map'); break;
     case 'track-date':  loadEmpTrack(document.getElementById('track-date-input')?.value || todayStr()); break;
     case 'delete-task': doDeleteTask(parseInt(d.id, 10)); break;
+
+    case 'hist-status':
+      if (!S.histFilter) S.histFilter = {status:'all', search:'', date:null};
+      S.histFilter.status = d.status;
+      document.querySelectorAll('.hist-st-btn').forEach(b => b.classList.toggle('active', b.dataset.status === d.status));
+      renderHistList();
+      break;
+    case 'cal-date': {
+      if (!S.histFilter) S.histFilter = {status:'all', search:'', date:null};
+      S.histFilter.date = S.histFilter.date === d.date ? null : d.date;
+      renderCalendar(); renderHistList();
+      break;
+    }
+    case 'cal-prev': {
+      let m=S.histCalMonth-1,y=S.histCalYear; if(m<0){m=11;y--;} S.histCalMonth=m;S.histCalYear=y; renderCalendar(); break;
+    }
+    case 'cal-next': {
+      let m2=S.histCalMonth+1,y2=S.histCalYear; if(m2>11){m2=0;y2++;} S.histCalMonth=m2;S.histCalYear=y2; renderCalendar(); break;
+    }
+    case 'cal-clear':
+      if (S.histFilter) S.histFilter.date = null;
+      renderCalendar(); renderHistList();
+      break;
+
+    case 'kpi-year': {
+      S.kpiYear += parseInt(d.dir, 10);
+      S.kpiData = null; S.kpiView = 'summary'; S.kpiEmpId = null; S.kpiEmpData = null;
+      const pc2 = document.getElementById('page-content');
+      if (pc2) { pc2.innerHTML = kpiPage(); loadKpi(); }
+      break;
+    }
+    case 'kpi-emp':
+      openKpiEmployee(parseInt(d.id, 10), d.name || '');
+      break;
+    case 'kpi-back':
+      S.kpiView = 'summary'; S.kpiEmpId = null; S.kpiEmpData = null;
+      renderKpi();
+      break;
   }
 });
 
@@ -1758,6 +2201,12 @@ document.addEventListener('change', ev => {
 
 document.addEventListener('input', ev => {
   if (ev.target.id === 'narea') { S.note = ev.target.value; refreshSubmitBtn(); }
+  if (ev.target.id === 'hist-search') {
+    if (!S.histFilter) S.histFilter = {status:'all', search:'', date:null};
+    S.histFilter.search = ev.target.value;
+    renderHistList();
+  }
+  if (ev.target.id === 'kpi-search') renderKpi();
 });
 
 /* BackButton faqat BIR MARTA ro'yxatdan o'tadi — har render'da emas,

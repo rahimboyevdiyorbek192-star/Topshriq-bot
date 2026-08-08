@@ -957,6 +957,70 @@ async def handle_employees_locations(request: web.Request) -> web.Response:
     return _json({"ok": True, "data": data})
 
 
+# ── KPI ───────────────────────────────────────────────────
+
+async def handle_kpi(request: web.Request) -> web.Response:
+    """GET /api/kpi?year=YYYY
+    Rahbar → barcha xodimlar KPI xulosasi.
+    Xodim  → o'z KPI ko'rsatkichlari."""
+    user, is_manager = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+
+    year = int(request.rel_url.query.get("year", datetime.now().year))
+    db: Database = request.app["db"]
+
+    if is_manager:
+        employees = await db.get_all_employees_kpi_summary(year)
+        # int keys → str for JSON serialization
+        for e in employees:
+            e["quarters"] = {str(q): v for q, v in e["quarters"].items()}
+        return _json({"employees": employees, "year": year, "is_manager": True})
+
+    quarters = await db.get_employee_kpi(user["id"], year)
+    quarters_out = {
+        str(q): {
+            "total": v["total"],
+            "done":  v["done"],
+            "months": {str(m): mv for m, mv in v["months"].items()},
+        }
+        for q, v in quarters.items()
+    }
+    return _json({"quarters": quarters_out, "year": year, "is_manager": False, "user": user})
+
+
+async def handle_kpi_employee(request: web.Request) -> web.Response:
+    """GET /api/kpi/{emp_id}?year=YYYY  — faqat rahbar uchun."""
+    user, is_manager = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if not is_manager:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+
+    emp_id = int(request.match_info.get("emp_id", "0"))
+    year   = int(request.rel_url.query.get("year", datetime.now().year))
+    db: Database = request.app["db"]
+
+    emp = await db.get_employee(emp_id)
+    if not emp:
+        return _json({"error": "Xodim topilmadi"}, 404)
+
+    quarters = await db.get_employee_kpi(emp_id, year)
+    quarters_out = {
+        str(q): {
+            "total": v["total"],
+            "done":  v["done"],
+            "months": {str(m): mv for m, mv in v["months"].items()},
+        }
+        for q, v in quarters.items()
+    }
+    return _json({
+        "quarters": quarters_out,
+        "year": year,
+        "employee": {"id": emp["tg_id"], "name": emp["full_name"]},
+    })
+
+
 # ── App factory ────────────────────────────────────────────
 
 def create_webapp(config: Config, db: Database, bot) -> web.Application:
@@ -991,6 +1055,9 @@ def create_webapp(config: Config, db: Database, bot) -> web.Application:
     app.router.add_post("/api/location",                    handle_location_post)
     app.router.add_get("/api/location/live",                handle_location_live)
     app.router.add_get("/api/location/{tg_id}",             handle_location_history)
+
+    app.router.add_get("/api/kpi",           handle_kpi)
+    app.router.add_get("/api/kpi/{emp_id}",  handle_kpi_employee)
 
     if STATIC_DIR.exists():
         app.router.add_static("/static", STATIC_DIR, show_index=False)
