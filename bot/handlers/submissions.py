@@ -192,6 +192,21 @@ async def handle_group_submission(
     task_id = await _resolve_task_id(message, db)
     note = message_text(message)[:1000] or None
 
+    # Albomning boshqa xabarlarida ham #T teg bo'lishi mumkin
+    if task_id is None and album:
+        for _m in album:
+            _txt = message_text(_m)
+            if not _txt:
+                continue
+            _tag = _TASK_TAG.search(_txt)
+            if _tag:
+                _tid = int(_tag.group(1))
+                _task = await db.get_task(_tid)
+                if _task:
+                    task_id = _tid
+                    note = _txt[:1000]
+                    break
+
     if task_id is not None:
         # Topshiriq teglanган — barcha albom fayllarini birga saqlash
         if album:
