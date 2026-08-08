@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Xonqa tumani yoshlar ishlar agentligi</title>
+<title>Topshiriq Tizimi</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
@@ -766,8 +766,8 @@ function shell() {
     <div class="sidebar">
       <div class="sb-logo">
         <div class="sb-logo-icon">🏛️</div>
-        <div class="sb-logo-name">Xonqa tumani yoshlar ishlar agentligi</div>
-        <div class="sb-logo-sub">Topshiriqlar platformasi</div>
+        <div class="sb-logo-name">${esc(SETTINGS.org_name)}</div>
+        <div class="sb-logo-sub">${esc(SETTINGS.app_title)}</div>
       </div>
       <div class="sb-user">
         <div class="sb-user-name">${esc(name)}</div>
@@ -828,8 +828,8 @@ function loginPage() {
     <div class="login-card">
       <div class="login-logo">
         <span class="ll-icon">🏛️</span>
-        <div class="ll-title">Xonqa tumani yoshlar ishlar agentligi</div>
-        <div class="ll-sub">Topshiriqlar tizimi — kirish</div>
+        <div class="ll-title">${esc(SETTINGS.org_name)}</div>
+        <div class="ll-sub">${esc(SETTINGS.app_title)} — kirish</div>
       </div>
       <div class="form-error" id="lerr"></div>
       <div class="form-group">
@@ -2119,15 +2119,11 @@ function kpiEmployeeHtml(data) {
   </div>`;
 }
 
-function kpiManagerHtml(data) {
-  const year = data.year || S.kpiYear;
-  const emps = data.employees || [];
-  const search = (document.getElementById('kpi-search')?.value || '').toLowerCase();
+function _kpiFilteredRows(emps, search) {
   const filtered = search
-    ? emps.filter(e => e.name.toLowerCase().includes(search))
+    ? emps.filter(e => e.name.toLowerCase().includes(search.toLowerCase()))
     : emps;
-
-  const rows = filtered.map((e, i) => {
+  return filtered.map((e, i) => {
     const qs = e.quarters || {};
     let td = 0, tt = 0;
     const cells = [1,2,3,4].map(q => {
@@ -2147,6 +2143,21 @@ function kpiManagerHtml(data) {
       <td style="text-align:center">${ag.icon}</td>
     </tr>`;
   }).join('');
+}
+
+function renderKpiTable() {
+  const tbody = document.getElementById('kpi-tbody');
+  if (!tbody || !S.kpiData) return;
+  const emps = (S.kpiData.employees || []);
+  const search = (document.getElementById('kpi-search')?.value || '');
+  const rows = _kpiFilteredRows(emps, search);
+  tbody.innerHTML = rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--hint)">Xodimlar topilmadi</td></tr>';
+}
+
+function kpiManagerHtml(data) {
+  const year = data.year || S.kpiYear;
+  const emps = data.employees || [];
+  const rows = _kpiFilteredRows(emps, '');
 
   return `<div class="detail-body pad-nav" style="display:flex;flex-direction:column;gap:10px;padding-top:14px">
     <div class="sec-card">
@@ -2174,7 +2185,7 @@ function kpiManagerHtml(data) {
               <th style="text-align:center">Daraja</th>
             </tr>
           </thead>
-          <tbody>${rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--hint)">Xodimlar topilmadi</td></tr>'}</tbody>
+          <tbody id="kpi-tbody">${rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--hint)">Xodimlar topilmadi</td></tr>'}</tbody>
         </table>
       </div>
     </div>
@@ -2300,6 +2311,12 @@ async function doSaveSettings() {
   if (!data) return;
   if (data.error) { showAlert(data.error); return; }
   SETTINGS = {...SETTINGS, ...data};
+  // Sidebar va boshqa joylardagi nomlarni ham yangilash
+  const sbn = document.querySelector('.sb-logo-name');
+  if (sbn) sbn.textContent = SETTINGS.org_name;
+  const sbs = document.querySelector('.sb-logo-sub');
+  if (sbs) sbs.textContent = SETTINGS.app_title;
+
   const msg = document.getElementById('settings-msg');
   if (msg) { msg.textContent = '✅ Sozlamalar saqlandi!'; msg.style.display = 'block';
              setTimeout(() => { msg.style.display = 'none'; }, 3000); }
@@ -2394,7 +2411,7 @@ document.addEventListener('input', ev => {
     S.histFilter.search = ev.target.value;
     renderHistList();
   }
-  if (ev.target.id === 'kpi-search') renderKpi();
+  if (ev.target.id === 'kpi-search') renderKpiTable();
 });
 
 /* BackButton faqat BIR MARTA ro'yxatdan o'tadi — har render'da emas,
@@ -2406,7 +2423,7 @@ if (tg && tg.BackButton) tg.BackButton.onClick(() => gotoPage('tasks'));
    ════════════════════════════════════════════════════════════ */
 (async () => {
   render({page:'loading'});
-  loadSettings(); // fon rejimida yuklanadi, kutilmaydi
+  await loadSettings(); // login sahifasida nom ko'rinishi uchun kutamiz
 
   if (IS_TG) {
     if (await loadTasks()) render({page:'tasks'});
