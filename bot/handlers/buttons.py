@@ -36,29 +36,11 @@ router = Router()
 
 def main_reply_kb(is_manager: bool, webapp_url: str = "") -> ReplyKeyboardMarkup:
     """Asosiy menyu — chat pastida doim ko'rinadi."""
-    app_btn = (
-        KeyboardButton(text="📱 Mini App", web_app=WebAppInfo(url=webapp_url))
-        if webapp_url
-        else KeyboardButton(text="❓ Yordam")
-    )
-
-    if is_manager:
-        buttons = [
-            [KeyboardButton(text="📋 Topshiriqlar"),  KeyboardButton(text="📊 Svodka")],
-            [KeyboardButton(text="📈 Reyting"),        KeyboardButton(text="📄 Excel")],
-            [KeyboardButton(text="🗂 Umumlashtir"),    KeyboardButton(text="🤖 AI Suhbat")],
-            [KeyboardButton(text="👥 Xodimlar"),       KeyboardButton(text="❓ Yordam")],
-            [app_btn] if webapp_url else [KeyboardButton(text="❓ Yordam")],
-        ]
+    if webapp_url:
+        app_btn = KeyboardButton(text="📱 Mini App", web_app=WebAppInfo(url=webapp_url))
+        buttons = [[app_btn, KeyboardButton(text="📋 Topshiriqlar")]]
     else:
-        buttons = [
-            [app_btn],
-            [KeyboardButton(text="📌 Ishlarim"),     KeyboardButton(text="📋 Topshiriqlar")],
-            [KeyboardButton(text="🤖 AI Yordam"),    KeyboardButton(text="❓ Yordam")],
-        ] if webapp_url else [
-            [KeyboardButton(text="📌 Ishlarim"),     KeyboardButton(text="📋 Topshiriqlar")],
-            [KeyboardButton(text="🤖 AI Yordam"),    KeyboardButton(text="❓ Yordam")],
-        ]
+        buttons = [[KeyboardButton(text="📋 Topshiriqlar")]]
     return ReplyKeyboardMarkup(
         keyboard=buttons,
         resize_keyboard=True,

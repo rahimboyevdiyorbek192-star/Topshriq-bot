@@ -67,17 +67,13 @@ async def cmd_start(message: Message, config: Config) -> None:
     name   = (message.from_user.first_name or "Xush kelibsiz") if message.from_user else "Xush kelibsiz"
     role   = "rahbar" if is_mgr else "xodim"
 
-    inline_kb = _webapp_kb(config.webapp_url) if config.webapp_enabled else None
-
     await message.answer(
         f"👋 Salom, <b>{name}</b>!\n\n"
         f"🤖 <b>Robot Mutaxassis</b> — topshiriqlar boshqaruv tizimiga xush kelibsiz.\n"
         f"Siz <b>{role}</b> sifatida kirgansiz.\n\n"
-        + ("📱 <b>Mini App</b> orqali topshiriqlarni ko'rib, fayl yuklashingiz mumkin!\n\n" if config.webapp_enabled else "")
-        + "Quyidagi tugmalardan foydalaning 👇",
-        reply_markup=inline_kb,
+        "Quyidagi tugmalardan foydalaning 👇",
+        reply_markup=main_reply_kb(is_mgr, config.webapp_url),
     )
-    await message.answer("Asosiy menyu 👇", reply_markup=main_reply_kb(is_mgr, config.webapp_url))
 
 
 @router.message(Command("help"))

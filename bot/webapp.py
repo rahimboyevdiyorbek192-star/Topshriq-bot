@@ -8,6 +8,7 @@ import json
 import logging
 import urllib.parse
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -704,10 +705,13 @@ async def handle_submit(request: web.Request) -> web.Response:
 
     # ── 3. Fayllarni Telegram'ga yuborish ─────────────────
     uploaded: list[tuple[str, str, str | None]] = []   # (file_id, fname, exif_date)
-    send_chat = config.execution_group_id or (
-        config.manager_ids[0] if config.manager_ids else None
-    )
-    if pending and send_chat:
+    send_chats: list[int] = []
+    if config.execution_group_id:
+        send_chats.append(config.execution_group_id)
+    if config.manager_ids:
+        send_chats.extend(config.manager_ids)
+
+    if pending and send_chats:
         from aiogram.types import BufferedInputFile
         uname = f"@{user['username']}" if user.get("username") else full_name
         for idx, (fname, fdata, exif_d) in enumerate(pending):
@@ -715,15 +719,19 @@ async def handle_submit(request: web.Request) -> web.Response:
                 f"📱 <b>Mini App topshiriq</b>\n👤 {uname}\n📋 #{task_id}"
                 if idx == 0 else None
             )
-            try:
-                sent = await bot.send_document(
-                    send_chat, BufferedInputFile(fdata, filename=fname), caption=caption
-                )
-            except Exception as exc:
-                logger.error("Fayl Telegram'ga yuborilmadi (%s): %s", fname, exc)
-                return _json({"error": f"Fayl yuborilmadi: {fname}"}, 502)
+            sent = None
+            for chat_id in send_chats:
+                try:
+                    sent = await bot.send_document(
+                        chat_id, BufferedInputFile(fdata, filename=fname), caption=caption
+                    )
+                    break
+                except Exception as exc:
+                    logger.warning("Fayl %s ga yuborilmadi (%s): %s", chat_id, fname, exc)
             if sent and sent.document:
                 uploaded.append((sent.document.file_id, fname, exif_d))
+            else:
+                logger.error("Fayl hech qayerga yuborilmadi: %s", fname)
 
     # ── 4. Bazaga yozish ──────────────────────────────────
     try:
