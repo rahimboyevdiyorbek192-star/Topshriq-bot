@@ -1081,6 +1081,49 @@ async def handle_employees_locations(request: web.Request) -> web.Response:
     return _json({"ok": True, "data": data})
 
 
+# ── Sozlamalar ────────────────────────────────────────────
+
+DEFAULT_SETTINGS = {
+    "org_name":    "Tashkilot nomi",
+    "app_title":   "Topshiriq Tizimi",
+    "dept_name":   "Bo'lim",
+    "task_label":  "Topshiriq",
+    "emp_label":   "Xodim",
+    "welcome_msg": "Topshiriqlar boshqaruv tizimiga xush kelibsiz.",
+}
+
+
+async def handle_settings_get(request: web.Request) -> web.Response:
+    """GET /api/settings — barcha foydalanuvchilar uchun ochiq."""
+    db: Database = request.app["db"]
+    saved = await db.get_all_settings()
+    merged = {**DEFAULT_SETTINGS, **saved}
+    return _json(merged)
+
+
+async def handle_settings_save(request: web.Request) -> web.Response:
+    """POST /api/settings — faqat rahbar."""
+    user, is_manager = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if not is_manager:
+        return _json({"error": "Faqat rahbar sozlay oladi"}, 403)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json({"error": "JSON noto'g'ri"}, 400)
+
+    db: Database = request.app["db"]
+    allowed = set(DEFAULT_SETTINGS.keys())
+    for key, val in body.items():
+        if key in allowed and isinstance(val, str):
+            await db.set_setting(key, val.strip())
+
+    saved = await db.get_all_settings()
+    return _json({**DEFAULT_SETTINGS, **saved})
+
+
 # ── KPI ───────────────────────────────────────────────────
 
 async def handle_kpi(request: web.Request) -> web.Response:
@@ -1182,6 +1225,9 @@ def create_webapp(config: Config, db: Database, bot) -> web.Application:
 
     app.router.add_get("/api/kpi",           handle_kpi)
     app.router.add_get("/api/kpi/{emp_id}",  handle_kpi_employee)
+
+    app.router.add_get("/api/settings",      handle_settings_get)
+    app.router.add_post("/api/settings",     handle_settings_save)
 
     if STATIC_DIR.exists():
         app.router.add_static("/static", STATIC_DIR, show_index=False)

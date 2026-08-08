@@ -157,6 +157,12 @@ class Database:
             pass
 
         await self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        await self._conn.execute("""
             CREATE TABLE IF NOT EXISTS web_sessions (
                 token      TEXT PRIMARY KEY,
                 tg_id      INTEGER NOT NULL,
@@ -712,7 +718,7 @@ class Database:
         """Xodim topshirgan umumiy fayllar soni (submissions + submission_files)."""
         cur = await self.conn.execute(
             """SELECT
-                 (SELECT CASE WHEN file_id IS NOT NULL THEN 1 ELSE 0 END
+                 (SELECT CASE WHEN file_id IS NOT NULL OR local_path IS NOT NULL THEN 1 ELSE 0 END
                   FROM submissions WHERE task_id=? AND employee_id=? LIMIT 1) +
                  (SELECT COUNT(*) FROM submission_files WHERE task_id=? AND employee_id=?)
                AS total""",
@@ -795,3 +801,22 @@ class Database:
             return done / total if total else 0.0
 
         return sorted(emp_map.values(), key=avg_pct, reverse=True)
+
+    # ---------- Sozlamalar (admin panel) ----------
+
+    async def get_setting(self, key: str, default: str = "") -> str:
+        cur = await self.conn.execute("SELECT value FROM settings WHERE key=?", (key,))
+        row = await cur.fetchone()
+        return row["value"] if row else default
+
+    async def set_setting(self, key: str, value: str) -> None:
+        await self.conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+        await self.conn.commit()
+
+    async def get_all_settings(self) -> dict:
+        cur = await self.conn.execute("SELECT key, value FROM settings")
+        rows = await cur.fetchall()
+        return {r["key"]: r["value"] for r in rows}

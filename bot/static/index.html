@@ -496,6 +496,22 @@ function freshState() {
 }
 let S = freshState();
 
+/* ── Sozlamalar (tashkilot matni) ── */
+let SETTINGS = {
+  org_name:    'Tashkilot nomi',
+  app_title:   'Topshiriq Tizimi',
+  dept_name:   "Bo'lim",
+  task_label:  'Topshiriq',
+  emp_label:   'Xodim',
+  welcome_msg: 'Topshiriqlar boshqaruv tizimiga xush kelibsiz.',
+};
+async function loadSettings() {
+  try {
+    const d = await api('/api/settings', {skipAuth: true});
+    if (d && !d.error) SETTINGS = {...SETTINGS, ...d};
+  } catch (_) {}
+}
+
 /* ════════════════════════════════════════════════════════════
    Yordamchilar
    ════════════════════════════════════════════════════════════ */
@@ -684,6 +700,7 @@ function updatePage() {
     'employees':   'Xodimlar',
     'history':     'Tarix',
     'kpi':         'KPI Natijalar',
+    'settings':    'Sozlamalar',
   };
   const mh = document.getElementById('mh-t');
   if (mh) mh.textContent = titles[S.page] || 'Topshiriqlar';
@@ -696,6 +713,7 @@ function updatePage() {
   else if (S.page === 'track-emp')   { pc.innerHTML = trackEmpPage(); loadEmpTrack(S.trackDate); }
   else if (S.page === 'history')     { pc.innerHTML = historyPage(); loadHistory(); }
   else if (S.page === 'kpi')         { pc.innerHTML = kpiPage(); loadKpi(); }
+  else if (S.page === 'settings')    { pc.innerHTML = settingsPage(); loadSettingsPage(); }
 }
 
 function gotoPage(page, extra) {
@@ -722,6 +740,9 @@ function shell() {
     </button>
     <button class="nav-item ${S.page === 'map' ? 'active' : ''}" data-act="page" data-page="map">
       <span class="nav-icon">📍</span> Joylashuv
+    </button>
+    <button class="nav-item ${S.page === 'settings' ? 'active' : ''}" data-act="page" data-page="settings">
+      <span class="nav-icon">⚙️</span> Sozlamalar
     </button>` : '';
 
   const mgrBnav = S.isManager ? `
@@ -730,6 +751,9 @@ function shell() {
     </button>
     <button class="bnav-item ${S.page === 'employees' ? 'active' : ''}" data-act="page" data-page="employees">
       <span class="bnav-icon">👥</span>Xodimlar
+    </button>
+    <button class="bnav-item ${S.page === 'settings' ? 'active' : ''}" data-act="page" data-page="settings">
+      <span class="bnav-icon">⚙️</span>Sozlamalar
     </button>
     <button class="bnav-item ${S.page === 'map' ? 'active' : ''}" data-act="page" data-page="map">
       <span class="bnav-icon">📍</span>Xarita
@@ -2213,6 +2237,76 @@ async function openKpiEmployee(empId, empName) {
 }
 
 /* ════════════════════════════════════════════════════════════
+   Sozlamalar sahifasi
+   ════════════════════════════════════════════════════════════ */
+
+const SETTINGS_META = [
+  { key: 'org_name',    label: "Tashkilot nomi",        placeholder: "Yoshlar Ishlari Agentligi" },
+  { key: 'app_title',   label: "Ilova sarlavhasi",       placeholder: "Topshiriq Tizimi" },
+  { key: 'dept_name',   label: "Bo'lim / Yo'nalish",     placeholder: "Asosiy bo'lim" },
+  { key: 'task_label',  label: "Topshiriq so'zi",        placeholder: "Topshiriq" },
+  { key: 'emp_label',   label: "Xodim so'zi",            placeholder: "Xodim" },
+  { key: 'welcome_msg', label: "Xush kelibsiz matni",    placeholder: "Tizimga xush kelibsiz." },
+];
+
+function settingsPage() {
+  return `<div class="detail-body pad-nav" style="padding-top:14px;display:flex;flex-direction:column;gap:10px">
+    <div class="center-box" style="padding:32px"><div class="spinner"></div></div>
+  </div>`;
+}
+
+async function loadSettingsPage() {
+  const data = await api('/api/settings');
+  if (!data) return;
+  const pc = document.getElementById('page-content');
+  if (!pc) return;
+
+  const fields = SETTINGS_META.map(m => `
+    <div style="margin-bottom:14px">
+      <label style="font-size:13px;font-weight:600;color:var(--hint);display:block;margin-bottom:4px">${esc(m.label)}</label>
+      <input type="text" id="set-${m.key}" class="hist-search" style="width:100%;box-sizing:border-box"
+             value="${esc(data[m.key] || '')}" placeholder="${esc(m.placeholder)}">
+    </div>`).join('');
+
+  pc.innerHTML = `<div class="detail-body pad-nav" style="padding-top:14px;display:flex;flex-direction:column;gap:10px">
+    <div class="sec-card">
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">⚙️ Tizim Sozlamalari</div>
+      <div class="text-hint text-sm">Sayt matnlarini tashkilotingizga moslang</div>
+    </div>
+    <div class="sec-card">
+      <div style="font-size:14px;font-weight:700;margin-bottom:12px">🏢 Tashkilot ma'lumotlari</div>
+      ${fields}
+      <button class="btn btn-primary" style="width:100%;margin-top:4px" data-act="settings-save">
+        💾 Saqlash
+      </button>
+      <div id="settings-msg" style="margin-top:8px;text-align:center;font-size:13px;color:var(--success);display:none"></div>
+    </div>
+    <div class="sec-card">
+      <div class="text-hint text-sm" style="line-height:1.6">
+        💡 Bu sozlamalar saytda ko'rinadigan matnlarni o'zgartiradi.<br>
+        Masalan: "Yoshlar Ishlari Agentligi" o'rniga o'z tashkilot nomingizni yozing.
+      </div>
+    </div>
+  </div>`;
+}
+
+async function doSaveSettings() {
+  const body = {};
+  SETTINGS_META.forEach(m => {
+    const el = document.getElementById('set-' + m.key);
+    if (el) body[m.key] = el.value.trim();
+  });
+  const data = await api('/api/settings', {method:'POST', body});
+  if (!data) return;
+  if (data.error) { showAlert(data.error); return; }
+  SETTINGS = {...SETTINGS, ...data};
+  const msg = document.getElementById('settings-msg');
+  if (msg) { msg.textContent = '✅ Sozlamalar saqlandi!'; msg.style.display = 'block';
+             setTimeout(() => { msg.style.display = 'none'; }, 3000); }
+  toast('⚙️ Sozlamalar saqlandi');
+}
+
+/* ════════════════════════════════════════════════════════════
    Hodisalar — bitta delegatsiyalangan tinglovchi.
    Inline onclick ishlatilmaydi: apostrofli ismlar ("O'ktam")
    handlerni buzardi va XSS yo'lini ochardi.
@@ -2282,6 +2376,9 @@ document.addEventListener('click', ev => {
       S.kpiView = 'summary'; S.kpiEmpId = null; S.kpiEmpData = null;
       renderKpi();
       break;
+    case 'settings-save':
+      doSaveSettings();
+      break;
   }
 });
 
@@ -2309,6 +2406,7 @@ if (tg && tg.BackButton) tg.BackButton.onClick(() => gotoPage('tasks'));
    ════════════════════════════════════════════════════════════ */
 (async () => {
   render({page:'loading'});
+  loadSettings(); // fon rejimida yuklanadi, kutilmaydi
 
   if (IS_TG) {
     if (await loadTasks()) render({page:'tasks'});
