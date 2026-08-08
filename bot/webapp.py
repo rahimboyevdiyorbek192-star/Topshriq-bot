@@ -1,6 +1,7 @@
 """Telegram Mini App uchun aiohttp HTTP server."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac as _hmac
 import io
@@ -112,6 +113,32 @@ def _extract_exif_info(
 
 def _extract_exif_date(data: bytes, filename: str) -> str | None:
     return _extract_exif_info(data, filename)[0]
+
+
+async def _tg_send_submission(bot, send_chats: list, uname: str, task_id: int,
+                               files_info: list[tuple[str, str]]) -> None:
+    """Background: diskdagi fayllarni Telegram ga yuboradi (xabarnoma uchun)."""
+    from aiogram.types import BufferedInputFile
+    for idx, (disk_path, fname) in enumerate(files_info):
+        try:
+            fdata = Path(disk_path).read_bytes()
+        except Exception:
+            continue
+        caption = (
+            f"📱 <b>Mini App topshiriq</b>\n👤 {uname}\n📋 #{task_id}"
+            if idx == 0 else None
+        )
+        for chat_id in send_chats:
+            try:
+                await bot.send_document(
+                    chat_id,
+                    BufferedInputFile(fdata, filename=fname),
+                    caption=caption,
+                    parse_mode="HTML",
+                )
+                break
+            except Exception as exc:
+                logger.warning("TG bg yuborish %s (%s): %s", chat_id, fname, exc)
 
 
 def _is_old_photo(exif_str: str | None, submitted_at: str) -> bool:
@@ -772,33 +799,14 @@ async def handle_submit(request: web.Request) -> web.Response:
         send_chats.extend(config.manager_ids)
 
     if pending:
-        from aiogram.types import BufferedInputFile
         uname = f"@{user['username']}" if user.get("username") else full_name
-        for idx, (fname, fdata, exif_d, exif_dev, exif_g) in enumerate(pending):
+        for fname, fdata, exif_d, exif_dev, exif_g in pending:
             # Disk'ga saqlash (har doim)
             safe = _safe_filename(fname)
             disk_path = uploads_dir / f"{uuid.uuid4().hex}_{safe}"
             disk_path.write_bytes(fdata)
-
-            # Telegram'ga yuborish (ixtiyoriy, xabarnoma uchun)
-            tg_file_id: str | None = None
-            if send_chats:
-                caption = (
-                    f"📱 <b>Mini App topshiriq</b>\n👤 {uname}\n📋 #{task_id}"
-                    if idx == 0 else None
-                )
-                for chat_id in send_chats:
-                    try:
-                        sent = await bot.send_document(
-                            chat_id, BufferedInputFile(fdata, filename=fname), caption=caption
-                        )
-                        if sent and sent.document:
-                            tg_file_id = sent.document.file_id
-                        break
-                    except Exception as exc:
-                        logger.warning("TG yuborish %s (%s): %s", chat_id, fname, exc)
-
-            uploaded.append((str(disk_path), tg_file_id, fname, exif_d, exif_dev, exif_g))
+            # tg_file_id fonda yuborilib to'ldiriladi — hozir None
+            uploaded.append((str(disk_path), None, fname, exif_d, exif_dev, exif_g))
 
     # ── 4. Bazaga yozish ──────────────────────────────────
     try:
@@ -824,6 +832,13 @@ async def handle_submit(request: web.Request) -> web.Response:
     except Exception as exc:
         logger.error("Submit bazaga yozilmadi: %s", exc, exc_info=True)
         return _json({"error": "Ma\'lumotni saqlab bo\'lmadi"}, 500)
+
+    # Telegram xabarnomasi fonda yuboriladi (javobni kutdirmaydi)
+    if uploaded and send_chats:
+        files_info = [(dp, fn) for dp, _, fn, *_ in uploaded]
+        asyncio.create_task(
+            _tg_send_submission(bot, send_chats, uname, task_id, files_info)
+        )
 
     submitted     = await db.submitted_employee_ids(task_id)
     my_file_count = await db.count_employee_total_files(task_id, user_id)
@@ -1341,24 +1356,22 @@ async def handle_my_file_replace(request: web.Request) -> web.Response:
     safe      = _safe_filename(fname)
     new_path  = uploads_dir / f"{uuid.uuid4().hex}_{safe}"
     new_path.write_bytes(fdata)
-    tg_file_id: str | None = None
-    if config.execution_group_id or config.manager_ids:
-        from aiogram.types import BufferedInputFile
-        chats = ([config.execution_group_id] if config.execution_group_id else []) + (config.manager_ids or [])
-        for cid in chats:
-            try:
-                sent = await bot.send_document(cid, BufferedInputFile(fdata, filename=fname))
-                if sent and sent.document:
-                    tg_file_id = sent.document.file_id
-                break
-            except Exception as exc:
-                logger.warning("TG replace yuborish: %s", exc)
     old_path = await db.replace_submission_file_record(
-        rec_type, rec_id, user_id, fname, str(new_path), tg_file_id
+        rec_type, rec_id, user_id, fname, str(new_path), None
     )
     if old_path is None:
         new_path.unlink(missing_ok=True)
         return _json({"error": "Fayl topilmadi"}, 404)
+    # Telegram xabarnomasi fonda
+    r_chats: list[int] = []
+    if config.execution_group_id:
+        r_chats.append(config.execution_group_id)
+    if config.manager_ids:
+        r_chats.extend(config.manager_ids)
+    if r_chats:
+        asyncio.create_task(
+            _tg_send_submission(bot, r_chats, f"#{user_id}", 0, [(str(new_path), fname)])
+        )
     if old_path:
         try:
             Path(old_path).unlink(missing_ok=True)

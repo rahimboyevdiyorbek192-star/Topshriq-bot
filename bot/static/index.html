@@ -1277,6 +1277,36 @@ function onFilesPicked(files, replace) {
 
 function removeFile(i) { S.selFiles.splice(i, 1); renderSelFiles(); }
 
+/* Rasmni canvas orqali siqadi (JPEG, maks 1920px, 82% sifat).
+   Fayl kichik bo'lsa yoki rasm bo'lmasa o'zgarishsiz qaytaradi. */
+function compressImage(file) {
+  return new Promise(function(resolve) {
+    if (!file.type.startsWith('image/')) { resolve(file); return; }
+    if (file.size < 400 * 1024) { resolve(file); return; }
+    var img = new Image();
+    var url = URL.createObjectURL(file);
+    img.onload = function() {
+      URL.revokeObjectURL(url);
+      var MAX = 1920, w = img.naturalWidth, h = img.naturalHeight;
+      if (w > MAX || h > MAX) {
+        if (w >= h) { h = Math.round(h * MAX / w); w = MAX; }
+        else        { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(function(blob) {
+        if (!blob || blob.size >= file.size * 0.95) { resolve(file); return; }
+        var dot = file.name.lastIndexOf('.');
+        var base = dot > 0 ? file.name.slice(0, dot) : file.name;
+        resolve(new File([blob], base + '.jpg', {type:'image/jpeg'}));
+      }, 'image/jpeg', 0.82);
+    };
+    img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 /* Fayl YOKI izoh bo'lsa yuborish mumkin — server ikkalasini ham qabul qiladi */
 function refreshSubmitBtn() {
   const btn = document.getElementById('subbtn');
@@ -1304,16 +1334,29 @@ async function doSubmit() {
   const ov = document.createElement('div');
   ov.className = 'overlay';
   ov.innerHTML = `<div class="overlay-box"><div class="spinner"></div>
-    <div class="overlay-text">${S.selFiles.length ? `Yuklanmoqda… ${S.selFiles.length} ta fayl` : 'Yuborilmoqda…'}</div></div>`;
+    <div class="overlay-text">${S.selFiles.length ? `Optimallashtirilmoqda… 0/${S.selFiles.length}` : 'Yuborilmoqda…'}</div></div>`;
   document.body.appendChild(ov);
+  const ovTxt = ov.querySelector('.overlay-text');
 
   try {
+    // Rasmlarni siqish (katta fayllar)
+    let filesToSend = S.selFiles;
+    if (S.selFiles.length) {
+      const compressed = [];
+      for (let i = 0; i < S.selFiles.length; i++) {
+        if (ovTxt) ovTxt.textContent = `Optimallashtirilmoqda… ${i+1}/${S.selFiles.length}`;
+        compressed.push(await compressImage(S.selFiles[i]));
+      }
+      filesToSend = compressed;
+      if (ovTxt) ovTxt.textContent = `Yuklanmoqda… ${filesToSend.length} ta fayl`;
+    }
+
     const coords = await getGeoCoords();
     const fd = new FormData();
     fd.append('task_id', S.activeTask.id);
     if (S.note.trim()) fd.append('note', S.note.trim());
     if (coords) { fd.append('lat', coords.lat); fd.append('lon', coords.lon); }
-    S.selFiles.forEach(f => fd.append('files[]', f));
+    filesToSend.forEach(f => fd.append('files[]', f));
 
     const data = await api('/api/submit', {method:'POST', body: fd});
     if (!data) return;                      // 401 — chiqarib yuborildi
