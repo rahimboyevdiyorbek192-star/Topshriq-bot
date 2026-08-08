@@ -1264,14 +1264,19 @@ async function doSubmit() {
 
     const t = S.tasks.find(x => x.id === S.activeTask.id);
     if (t) {
-      t.submitted_by_me = true;
+      t.submitted_by_me = data.submitted_by_me;
+      t.my_file_count   = data.my_file_count;
       t.done_count      = data.done_count;
       t.total_count     = data.total_count;
       t.my_submission   = {file_name: S.selFiles.length ? S.selFiles[0].name : null,
                            submitted_at: new Date().toISOString()};
     }
     ov.remove();
-    successOverlay(data.done_count, data.total_count);
+    if (data.submitted_by_me) {
+      successOverlay(data.done_count, data.total_count);
+    } else {
+      partialUploadOverlay(data.my_file_count, data.req_files);
+    }
   } catch (e) {
     ov.remove();
     showAlert('Xato: ' + e.message);
@@ -1287,6 +1292,18 @@ function successOverlay(done, total) {
   document.body.appendChild(el);
   if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
   setTimeout(() => { el.remove(); gotoPage('tasks'); }, 2200);
+}
+
+function partialUploadOverlay(myCount, req) {
+  const remaining = req - myCount;
+  const el = document.createElement('div');
+  el.className = 'success-overlay';
+  el.innerHTML = `<div class="success-icon">📤</div>
+    <div class="success-title">${myCount}/${req} fayl yuklandi</div>
+    <div class="success-sub">Yana ${remaining} ta fayl kerak</div>`;
+  document.body.appendChild(el);
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+  setTimeout(() => { el.remove(); gotoPage('tasks'); }, 2500);
 }
 
 /* Fayl nomi ?name= orqali uzatiladi — aks holda "file_12.docx" bo'lib tushadi */

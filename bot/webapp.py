@@ -784,11 +784,17 @@ async def handle_submit(request: web.Request) -> web.Response:
         logger.error("Submit bazaga yozilmadi: %s", exc, exc_info=True)
         return _json({"error": "Ma\'lumotni saqlab bo\'lmadi"}, 500)
 
-    submitted = await db.submitted_employee_ids(task_id)
+    submitted     = await db.submitted_employee_ids(task_id)
+    my_file_count = await db.count_employee_total_files(task_id, user_id)
+    req_files     = task["required_files"] if "required_files" in task.keys() else 0
+    submitted_me  = user_id in submitted and (req_files == 0 or my_file_count >= req_files)
     return _json({
-        "ok":          True,
-        "done_count":  len(submitted),
-        "total_count": await db.count_employees(),
+        "ok":              True,
+        "done_count":      len(submitted),
+        "total_count":     await db.count_employees(),
+        "submitted_by_me": submitted_me,
+        "my_file_count":   my_file_count,
+        "req_files":       req_files,
     })
 
 
