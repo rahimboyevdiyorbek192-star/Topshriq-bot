@@ -112,7 +112,13 @@ button,input,select,textarea{font-family:inherit}
 .btn-primary{background:var(--primary);color:#fff}
 .btn-ghost{background:var(--bg);color:var(--text);border:1px solid var(--border)}
 .btn-sm{padding:6px 12px;font-size:13px}
+.btn-xs{padding:4px 8px;font-size:12px}
 .btn-full{width:100%}
+.btn-danger-ghost{color:var(--danger,#ef4444);border-color:var(--danger,#ef4444)}
+.my-file-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)}
+.my-file-row:last-of-type{border-bottom:none}
+.fi-name-sm{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.my-file-acts{display:flex;gap:4px;flex-shrink:0}
 
 /* ── Nishonlar ───────────────────────────────────────────── */
 .badge{
@@ -481,7 +487,7 @@ function freshState() {
   return {
     page:'loading', isManager:false, user:null,
     tasks:[], activeTask:null, detail:null, employees:[],
-    selFiles:[], ctFiles:[], note:'',
+    selFiles:[], ctFiles:[], note:'', myFiles:[],
     trackEmpId: null, trackEmpName: '', trackDate: '',
     history: [],
     histCalYear: new Date().getFullYear(),
@@ -971,6 +977,11 @@ function taskListPage() {
     const dl = deadlineInfo(t.deadline);
     const req = t.required_files || 0;
     const myCount = t.my_file_count || 0;
+    // For employees with file requirement — show own progress, not overall
+    const showMyPct = !S.isManager && req > 0;
+    const dispPct  = showMyPct ? Math.min(100, Math.round(myCount / req * 100)) : p;
+    const dispCls  = showMyPct ? (myCount>=req?'pg-done':myCount>0?'pg-part':'') : pgCls(p);
+    const dispTxt  = showMyPct ? `${myCount}/${req} fayl (${dispPct}%)` : `${p}% bajarildi`;
     let badge;
     if (t.submitted_by_me) {
       badge = '<span class="badge badge-done">✅ Topshirdim</span>';
@@ -990,8 +1001,8 @@ function taskListPage() {
         <span>👥 ${t.done_count}/${t.total_count}</span>
       </div>
       <div class="prog-wrap">
-        <div class="prog-bar"><div class="prog-fill ${pgCls(p)}" style="width:${p}%"></div></div>
-        <div class="prog-text">${p}% bajarildi</div>
+        <div class="prog-bar"><div class="prog-fill ${dispCls}" style="width:${dispPct}%"></div></div>
+        <div class="prog-text">${dispTxt}</div>
       </div>
     </div>`;
   }).join('');
@@ -1002,15 +1013,21 @@ function taskListPage() {
 async function openTask(id) {
   const t = S.tasks.find(x => x.id === id) || (S.history || []).find(x => x.id === id);
   if (!t) return;
-  render({page:'task-detail', activeTask:t, detail:null, selFiles:[], note:''});
+  render({page:'task-detail', activeTask:t, detail:null, selFiles:[], note:'', myFiles:[]});
 
-  if (!S.isManager) return;
-  const d = await api(`/api/tasks/${id}/detail`);
-  /* Javob kechikkanda foydalanuvchi boshqa sahifaga o'tgan bo'lishi mumkin */
-  if (!d || d.error) return;
-  if (S.page !== 'task-detail' || !S.activeTask || S.activeTask.id !== id) return;
-  S.detail = d;
-  updatePage();
+  if (S.isManager) {
+    const d = await api(`/api/tasks/${id}/detail`);
+    if (!d || d.error) return;
+    if (S.page !== 'task-detail' || !S.activeTask || S.activeTask.id !== id) return;
+    S.detail = d;
+    updatePage();
+  } else {
+    const mf = await api(`/api/my-files/${id}`);
+    if (!mf || mf.error) return;
+    if (S.page !== 'task-detail' || !S.activeTask || S.activeTask.id !== id) return;
+    S.myFiles = mf.files || [];
+    updatePage();
+  }
 }
 
 /* ── Umumiy bo'laklar ────────────────────────────────────── */
@@ -1168,12 +1185,41 @@ function empDetailPage() {
     </div>
     <div class="resubmit-note">Qayta yuborish uchun yangi fayl tanlang yoki izohni yangilang</div>` : '';
 
+  const myFilesHtml = S.myFiles && S.myFiles.length ? `
+    <div class="sec-card">
+      <div class="sec-title">📂 Yuklagan fayllarim</div>
+      ${S.myFiles.map(f => `
+        <div class="my-file-row">
+          <span class="fi-icon">${fileIcon(f.file_name, '')}</span>
+          <span class="fi-name-sm">${esc(f.file_name)}</span>
+          <div class="my-file-acts">
+            <button class="btn btn-ghost btn-xs" data-act="dl-myfile"
+              data-tid="${t.id}" data-rtype="${esc(f.rec_type)}" data-rid="${f.rec_id}"
+              title="Yuklab olish">⬇️</button>
+            <button class="btn btn-ghost btn-xs" data-act="replace-myfile"
+              data-tid="${t.id}" data-rtype="${esc(f.rec_type)}" data-rid="${f.rec_id}"
+              data-fname="${esc(f.file_name)}" title="Almashtirish">✏️</button>
+            <button class="btn btn-ghost btn-xs btn-danger-ghost" data-act="del-myfile"
+              data-tid="${t.id}" data-rtype="${esc(f.rec_type)}" data-rid="${f.rec_id}"
+              data-fname="${esc(f.file_name)}" title="O'chirish">🗑️</button>
+          </div>
+        </div>`).join('')}
+      <input type="file" id="replace-finput" style="display:none">
+    </div>` : '';
+
+  const myPct = req > 0 ? Math.min(100, Math.round(myCount / req * 100)) : p;
+  const myMeta = req > 0
+    ? `<span class="text-hint">${myCount}/${req} fayl (${myPct}%)</span>`
+    : `<span class="text-hint">👥 ${t.done_count}/${t.total_count} (${p}%)</span>`;
+
   return `
   <div class="detail-body pad-nav">
     ${backBtnHtml}
-    ${taskHeaderHtml(t, `<span class="text-hint">👥 ${t.done_count}/${t.total_count} (${p}%)</span>`)}
+    ${taskHeaderHtml(t, myMeta)}
 
     ${fileProgressHtml}
+
+    ${myFilesHtml}
 
     <div class="sec-card">
       <div class="sec-title">📎 Rahbar fayllari</div>
@@ -1309,6 +1355,69 @@ function partialUploadOverlay(myCount, req) {
 /* Fayl nomi ?name= orqali uzatiladi — aks holda "file_12.docx" bo'lib tushadi */
 function dlFile(fileId, name) {
   openUrl(`/api/file/${encodeURIComponent(fileId)}?${authQuery()}&name=${encodeURIComponent(name || 'fayl')}`);
+}
+
+function dlMyFile(tid, rtype, rid, fname) {
+  openUrl(`/api/my-files/${tid}/${rtype}/${rid}?${authQuery()}&name=${encodeURIComponent(fname||'fayl')}`);
+}
+
+async function deleteMyFile(tid, rtype, rid, fname) {
+  const ok = await showConfirm(`"${fname}" faylini o'chirasizmi?\nDiskdan ham o'chadi.`);
+  if (!ok) return;
+  const data = await api(`/api/my-files/${tid}/${rtype}/${rid}`, {method:'DELETE'});
+  if (!data || data.error) { showAlert('Xato: ' + (data?.error || 'server xatosi')); return; }
+  // Update task in state
+  const t = S.tasks.find(x => x.id === tid);
+  if (t) {
+    t.my_file_count   = data.my_file_count;
+    t.submitted_by_me = data.submitted_by_me;
+  }
+  // Remove from myFiles list
+  S.myFiles = S.myFiles.filter(f => !(f.rec_type === rtype && f.rec_id === rid));
+  if (S.activeTask && S.activeTask.id === tid) {
+    S.activeTask.my_file_count   = data.my_file_count;
+    S.activeTask.submitted_by_me = data.submitted_by_me;
+  }
+  updatePage();
+  toast('🗑️ Fayl o\'chirildi');
+}
+
+let _replaceTarget = null;
+function openReplaceMyFile(tid, rtype, rid, fname) {
+  _replaceTarget = {tid, rtype, rid, fname};
+  const inp = document.getElementById('replace-finput');
+  if (inp) inp.click();
+}
+
+async function replaceMyFile(file) {
+  if (!file || !_replaceTarget) return;
+  const {tid, rtype, rid} = _replaceTarget;
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.innerHTML = `<div class="overlay-box"><div class="spinner"></div><div class="overlay-text">Almashtirilmoqda…</div></div>`;
+  document.body.appendChild(ov);
+  try {
+    const fd = new FormData();
+    fd.append('files[]', file);
+    const data = await api(`/api/my-files/${tid}/${rtype}/${rid}`, {method:'POST', body:fd});
+    if (!data || data.error) throw new Error(data?.error || 'server xatosi');
+    // Update state
+    const t = S.tasks.find(x => x.id === tid);
+    if (t) { t.my_file_count = data.my_file_count; t.submitted_by_me = data.submitted_by_me; }
+    if (S.activeTask && S.activeTask.id === tid) {
+      S.activeTask.my_file_count   = data.my_file_count;
+      S.activeTask.submitted_by_me = data.submitted_by_me;
+    }
+    const mfItem = S.myFiles.find(f => f.rec_type === rtype && f.rec_id === rid);
+    if (mfItem) mfItem.file_name = data.file_name;
+    ov.remove();
+    updatePage();
+    toast('✅ Fayl almashtirildi');
+  } catch (e) {
+    ov.remove();
+    showAlert('Xato: ' + e.message);
+  }
+  _replaceTarget = null;
 }
 
 function dlZip(taskId) {
@@ -2428,12 +2537,23 @@ document.addEventListener('click', ev => {
     case 'settings-save':
       doSaveSettings();
       break;
+    case 'dl-myfile':
+      dlMyFile(parseInt(d.tid,10), d.rtype, parseInt(d.rid,10), d.fname);
+      break;
+    case 'del-myfile':
+      deleteMyFile(parseInt(d.tid,10), d.rtype, parseInt(d.rid,10), d.fname);
+      break;
+    case 'replace-myfile':
+      openReplaceMyFile(parseInt(d.tid,10), d.rtype, parseInt(d.rid,10), d.fname);
+      break;
   }
 });
 
 document.addEventListener('change', ev => {
   if (ev.target.id === 'finput' || ev.target.id === 'finput-cam')
     onFilesPicked(ev.target.files);
+  if (ev.target.id === 'replace-finput' && ev.target.files && ev.target.files[0])
+    replaceMyFile(ev.target.files[0]);
 });
 
 document.addEventListener('input', ev => {

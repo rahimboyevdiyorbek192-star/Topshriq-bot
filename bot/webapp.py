@@ -1194,6 +1194,148 @@ async def handle_kpi_employee(request: web.Request) -> web.Response:
     })
 
 
+# ── Xodimning o'z fayllarini boshqarish ───────────────────
+
+async def _my_file_auth(request: web.Request):
+    """(user, is_manager, task_id, rec_type, rec_id) yoki xato Response."""
+    user, _ = await _auth_full(request)
+    if not user or user["id"] == 0:
+        return None, None, None, None, None
+    rec_type = request.match_info.get("rec_type", "")
+    if rec_type not in ("main", "extra"):
+        return None, None, None, None, None
+    try:
+        task_id = int(request.match_info["task_id"])
+        rec_id  = int(request.match_info["rec_id"])
+    except (KeyError, ValueError):
+        return None, None, None, None, None
+    return user, user["id"], task_id, rec_type, rec_id
+
+
+async def handle_my_files_list(request: web.Request) -> web.Response:
+    user, _ = await _auth_full(request)
+    if not user or user["id"] == 0:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    try:
+        task_id = int(request.match_info["task_id"])
+    except (KeyError, ValueError):
+        return _json({"error": "task_id noto'g'ri"}, 400)
+    db: Database = request.app["db"]
+    files = await db.get_employee_submission_files_meta(task_id, user["id"])
+    return _json({"files": files})
+
+
+async def handle_my_file_download(request: web.Request) -> web.Response:
+    user, user_id, task_id, rec_type, rec_id = await _my_file_auth(request)
+    if not user:
+        return web.Response(status=401)
+    db: Database = request.app["db"]
+    info = await db.get_submission_file_local(rec_type, rec_id, user_id)
+    if not info or not info["local_path"]:
+        return web.Response(status=404)
+    p = Path(info["local_path"])
+    if not p.exists():
+        return web.Response(status=404)
+    fname    = request.rel_url.query.get("name", "") or info["file_name"]
+    ext      = Path(fname).suffix.lower()
+    ctype_map = {".pdf": "application/pdf", ".jpg": "image/jpeg",
+                 ".jpeg": "image/jpeg", ".png": "image/png",
+                 ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                 ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+    ctype    = ctype_map.get(ext, "application/octet-stream")
+    encoded  = urllib.parse.quote(fname, safe="")
+    return web.Response(
+        body=p.read_bytes(),
+        content_type=ctype,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded}"},
+    )
+
+
+async def handle_my_file_delete(request: web.Request) -> web.Response:
+    user, user_id, task_id, rec_type, rec_id = await _my_file_auth(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    db: Database = request.app["db"]
+    old_path = await db.delete_submission_file_record(rec_type, rec_id, user_id)
+    if old_path is None:
+        return _json({"error": "Fayl topilmadi"}, 404)
+    if old_path:
+        try:
+            Path(old_path).unlink(missing_ok=True)
+        except Exception as exc:
+            logger.warning("Faylni diskdan o'chirib bo'lmadi: %s", exc)
+    my_file_count = await db.count_employee_total_files(task_id, user_id)
+    task          = await db.get_task(task_id)
+    req_files     = task["required_files"] if task and "required_files" in task.keys() else 0
+    submitted_ids = await db.submitted_employee_ids(task_id)
+    submitted_me  = user_id in submitted_ids and (req_files == 0 or my_file_count >= req_files)
+    return _json({
+        "ok":              True,
+        "my_file_count":   my_file_count,
+        "submitted_by_me": submitted_me,
+    })
+
+
+async def handle_my_file_replace(request: web.Request) -> web.Response:
+    user, user_id, task_id, rec_type, rec_id = await _my_file_auth(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    db: Database    = request.app["db"]
+    config: Config  = request.app["config"]
+    bot             = request.app["bot"]
+    try:
+        reader = await request.multipart()
+        fname = "fayl"
+        fdata: bytes | None = None
+        async for field in reader:
+            if field.name in ("file", "files", "files[]"):
+                fdata = await field.read()
+                fname = field.filename or "fayl"
+    except Exception as exc:
+        return _json({"error": f"Fayl o'qib bo'lmadi: {exc}"}, 400)
+    if not fdata:
+        return _json({"error": "Fayl kerak"}, 400)
+    uploads_dir = Path(config.db_path).resolve().parent / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    safe      = _safe_filename(fname)
+    new_path  = uploads_dir / f"{uuid.uuid4().hex}_{safe}"
+    new_path.write_bytes(fdata)
+    tg_file_id: str | None = None
+    if config.execution_group_id or config.manager_ids:
+        from aiogram.types import BufferedInputFile
+        chats = ([config.execution_group_id] if config.execution_group_id else []) + (config.manager_ids or [])
+        for cid in chats:
+            try:
+                sent = await bot.send_document(cid, BufferedInputFile(fdata, filename=fname))
+                if sent and sent.document:
+                    tg_file_id = sent.document.file_id
+                break
+            except Exception as exc:
+                logger.warning("TG replace yuborish: %s", exc)
+    old_path = await db.replace_submission_file_record(
+        rec_type, rec_id, user_id, fname, str(new_path), tg_file_id
+    )
+    if old_path is None:
+        new_path.unlink(missing_ok=True)
+        return _json({"error": "Fayl topilmadi"}, 404)
+    if old_path:
+        try:
+            Path(old_path).unlink(missing_ok=True)
+        except Exception as exc:
+            logger.warning("Eski faylni o'chirib bo'lmadi: %s", exc)
+    my_file_count = await db.count_employee_total_files(task_id, user_id)
+    task          = await db.get_task(task_id)
+    req_files     = task["required_files"] if task and "required_files" in task.keys() else 0
+    submitted_ids = await db.submitted_employee_ids(task_id)
+    submitted_me  = user_id in submitted_ids and (req_files == 0 or my_file_count >= req_files)
+    return _json({
+        "ok":              True,
+        "file_name":       fname,
+        "my_file_count":   my_file_count,
+        "submitted_by_me": submitted_me,
+    })
+
+
 # ── App factory ────────────────────────────────────────────
 
 def create_webapp(config: Config, db: Database, bot) -> web.Application:
@@ -1218,6 +1360,11 @@ def create_webapp(config: Config, db: Database, bot) -> web.Application:
     app.router.add_delete("/api/tasks/{task_id}",     handle_task_delete)
     app.router.add_post("/api/submit",                handle_submit)
     app.router.add_get("/api/file/{file_id}",         handle_file_proxy)
+
+    app.router.add_get(   "/api/my-files/{task_id}",                          handle_my_files_list)
+    app.router.add_get(   "/api/my-files/{task_id}/{rec_type}/{rec_id}",      handle_my_file_download)
+    app.router.add_delete("/api/my-files/{task_id}/{rec_type}/{rec_id}",      handle_my_file_delete)
+    app.router.add_post(  "/api/my-files/{task_id}/{rec_type}/{rec_id}",      handle_my_file_replace)
 
     app.router.add_get("/api/employees",                    handle_employees_list)
     app.router.add_post("/api/employees",                   handle_employees_add)

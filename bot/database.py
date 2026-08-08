@@ -727,6 +727,110 @@ class Database:
         row = await cur.fetchone()
         return (row["total"] or 0) if row else 0
 
+    async def get_employee_submission_files_meta(
+        self, task_id: int, employee_id: int
+    ) -> list[dict]:
+        """Xodim yuklagan barcha fayllar ro'yxati (submissions + submission_files)."""
+        result: list[dict] = []
+        cur = await self.conn.execute(
+            "SELECT id, file_name, local_path FROM submissions "
+            "WHERE task_id=? AND employee_id=? LIMIT 1",
+            (task_id, employee_id),
+        )
+        row = await cur.fetchone()
+        if row and row["local_path"]:
+            result.append({
+                "rec_type": "main", "rec_id": row["id"],
+                "file_name": row["file_name"] or "fayl",
+            })
+        cur = await self.conn.execute(
+            "SELECT id, file_name, local_path FROM submission_files "
+            "WHERE task_id=? AND employee_id=? ORDER BY id",
+            (task_id, employee_id),
+        )
+        for row in await cur.fetchall():
+            if row["local_path"]:
+                result.append({
+                    "rec_type": "extra", "rec_id": row["id"],
+                    "file_name": row["file_name"] or "fayl",
+                })
+        return result
+
+    async def get_submission_file_local(
+        self, rec_type: str, rec_id: int, employee_id: int
+    ) -> dict | None:
+        """{'file_name', 'local_path'} yoki None."""
+        tbl = "submissions" if rec_type == "main" else "submission_files"
+        cur = await self.conn.execute(
+            f"SELECT file_name, local_path FROM {tbl} WHERE id=? AND employee_id=?",
+            (rec_id, employee_id),
+        )
+        row = await cur.fetchone()
+        return (
+            {"file_name": row["file_name"] or "fayl", "local_path": row["local_path"] or ""}
+            if row else None
+        )
+
+    async def delete_submission_file_record(
+        self, rec_type: str, rec_id: int, employee_id: int
+    ) -> str | None:
+        """Disk yo'lini qaytaradi; topilmasa None."""
+        if rec_type == "main":
+            cur = await self.conn.execute(
+                "SELECT local_path FROM submissions WHERE id=? AND employee_id=?",
+                (rec_id, employee_id),
+            )
+            row = await cur.fetchone()
+            if not row:
+                return None
+            old = row["local_path"] or ""
+            await self.conn.execute(
+                "UPDATE submissions SET file_id=NULL, file_name=NULL, local_path=NULL "
+                "WHERE id=? AND employee_id=?",
+                (rec_id, employee_id),
+            )
+        else:
+            cur = await self.conn.execute(
+                "SELECT local_path FROM submission_files WHERE id=? AND employee_id=?",
+                (rec_id, employee_id),
+            )
+            row = await cur.fetchone()
+            if not row:
+                return None
+            old = row["local_path"] or ""
+            await self.conn.execute(
+                "DELETE FROM submission_files WHERE id=? AND employee_id=?",
+                (rec_id, employee_id),
+            )
+        await self.conn.commit()
+        return old
+
+    async def replace_submission_file_record(
+        self,
+        rec_type: str,
+        rec_id: int,
+        employee_id: int,
+        file_name: str,
+        local_path: str,
+        file_id: str | None,
+    ) -> str | None:
+        """Yangi fayl ma'lumotlari bilan yangilaydi; eski disk yo'lini qaytaradi."""
+        tbl = "submissions" if rec_type == "main" else "submission_files"
+        cur = await self.conn.execute(
+            f"SELECT local_path FROM {tbl} WHERE id=? AND employee_id=?",
+            (rec_id, employee_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        old = row["local_path"] or ""
+        await self.conn.execute(
+            f"UPDATE {tbl} SET file_id=?, file_name=?, local_path=? WHERE id=? AND employee_id=?",
+            (file_id, file_name, local_path, rec_id, employee_id),
+        )
+        await self.conn.commit()
+        return old
+
     # ---------- KPI ----------
 
     async def get_employee_kpi(self, employee_id: int, year: int) -> dict:
