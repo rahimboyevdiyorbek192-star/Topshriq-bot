@@ -2131,7 +2131,7 @@ function _kpiFilteredRows(emps, search) {
       td += qd.done; tt += qd.total;
       const p = kpiPct(qd.done, qd.total);
       const g = kpiGrade(p);
-      return `<td class="hide-sm ${g.cellCls}" style="text-align:center">${p!==null?p+'%':'—'}</td>`;
+      return `<td class="${g.cellCls}" style="text-align:center">${p!==null?p+'%':'—'}</td>`;
     }).join('');
     const avgP = kpiPct(td, tt);
     const ag = kpiGrade(avgP);
@@ -2173,14 +2173,14 @@ function kpiManagerHtml(data) {
     </div>
     <div class="sec-card">
       <div class="table-wrap">
-        <table class="emp-table">
+        <table class="emp-table" style="white-space:nowrap">
           <thead>
             <tr>
-              <th>#</th><th>Xodim</th>
-              <th class="hide-sm" style="text-align:center">Q1</th>
-              <th class="hide-sm" style="text-align:center">Q2</th>
-              <th class="hide-sm" style="text-align:center">Q3</th>
-              <th class="hide-sm" style="text-align:center">Q4</th>
+              <th>#</th><th style="min-width:80px">Xodim</th>
+              <th style="text-align:center">Q1</th>
+              <th style="text-align:center">Q2</th>
+              <th style="text-align:center">Q3</th>
+              <th style="text-align:center">Q4</th>
               <th style="text-align:center">O'rtacha</th>
               <th style="text-align:center">Daraja</th>
             </tr>
