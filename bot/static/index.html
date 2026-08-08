@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Xonqa Yoshlar Agentligi</title>
+<title>Xonqa tumani yoshlar ishlar agentligi</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
@@ -396,6 +396,7 @@ function freshState() {
     tasks:[], activeTask:null, detail:null, employees:[],
     selFiles:[], note:'',
     trackEmpId: null, trackEmpName: '', trackDate: '',
+    history: [],
   };
 }
 let S = freshState();
@@ -586,6 +587,7 @@ function updatePage() {
     'task-detail': S.activeTask ? `#${S.activeTask.id} ${S.activeTask.title}` : 'Topshiriq',
     'create-task': "Topshiriq qo'shish",
     'employees':   'Xodimlar',
+    'history':     'Tarix',
   };
   const mh = document.getElementById('mh-t');
   if (mh) mh.textContent = titles[S.page] || 'Topshiriqlar';
@@ -596,12 +598,14 @@ function updatePage() {
   else if (S.page === 'employees')   pc.innerHTML = employeesPage();
   else if (S.page === 'map')         { pc.innerHTML = mapPage(); loadLiveMap(); }
   else if (S.page === 'track-emp')   { pc.innerHTML = trackEmpPage(); loadEmpTrack(S.trackDate); }
+  else if (S.page === 'history')     { pc.innerHTML = historyPage(); loadHistory(); }
 }
 
 function gotoPage(page, extra) {
   if (page === 'tasks') render({page:'tasks', activeTask:null, detail:null, selFiles:[], note:''});
   else if (page === 'employees') loadEmployees().then(() => render({page:'employees'}));
   else if (page === 'track-emp' && extra) render({page:'track-emp', ...extra});
+  else if (page === 'history') render({page:'history'});
   else render({page});
 }
 
@@ -640,7 +644,7 @@ function shell() {
     <div class="sidebar">
       <div class="sb-logo">
         <div class="sb-logo-icon">🏛️</div>
-        <div class="sb-logo-name">Xonqa Yoshlar Agentligi</div>
+        <div class="sb-logo-name">Xonqa tumani yoshlar ishlar agentligi</div>
         <div class="sb-logo-sub">Topshiriqlar platformasi</div>
       </div>
       <div class="sb-user">
@@ -650,6 +654,9 @@ function shell() {
       <nav class="sb-nav">
         <button class="nav-item ${inTasks ? 'active' : ''}" data-act="page" data-page="tasks">
           <span class="nav-icon">📋</span> Topshiriqlar
+        </button>
+        <button class="nav-item ${S.page === 'history' ? 'active' : ''}" data-act="page" data-page="history">
+          <span class="nav-icon">📅</span> Tarix
         </button>
         ${mgrNav}
       </nav>
@@ -671,6 +678,9 @@ function shell() {
       <button class="bnav-item ${inTasks ? 'active' : ''}" data-act="page" data-page="tasks">
         <span class="bnav-icon">📋</span>Topshiriqlar
       </button>
+      <button class="bnav-item ${S.page === 'history' ? 'active' : ''}" data-act="page" data-page="history">
+        <span class="bnav-icon">📅</span>Tarix
+      </button>
       ${mgrBnav}
     </div>
   </div>`;
@@ -690,7 +700,7 @@ function loginPage() {
     <div class="login-card">
       <div class="login-logo">
         <span class="ll-icon">🏛️</span>
-        <div class="ll-title">Xonqa Yoshlar Agentligi</div>
+        <div class="ll-title">Xonqa tumani yoshlar ishlar agentligi</div>
         <div class="ll-sub">Topshiriqlar tizimi — kirish</div>
       </div>
       <div class="form-error" id="lerr"></div>
@@ -840,7 +850,7 @@ function taskListPage() {
 }
 
 async function openTask(id) {
-  const t = S.tasks.find(x => x.id === id);
+  const t = S.tasks.find(x => x.id === id) || (S.history || []).find(x => x.id === id);
   if (!t) return;
   render({page:'task-detail', activeTask:t, detail:null, selFiles:[], note:''});
 
@@ -938,7 +948,10 @@ function mgrDetailPage() {
 
   return `
   <div class="detail-body pad-nav">
-    ${backBtnHtml}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
+      <button class="btn btn-ghost btn-sm" data-act="page" data-page="tasks">← Orqaga</button>
+      <button class="btn btn-sm" style="color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger)" data-act="delete-task" data-id="${t.id}">🗑️ O'chirish</button>
+    </div>
     ${taskHeaderHtml(t)}
 
     <div class="sec-card">
@@ -1582,6 +1595,129 @@ async function delEmp(tgId) {
 }
 
 /* ════════════════════════════════════════════════════════════
+   Tarix
+   ════════════════════════════════════════════════════════════ */
+function historyPage() {
+  return `
+  <div class="detail-body pad-nav">
+    <div class="sec-card">
+      <div class="flex items-center justify-between" style="margin-bottom:12px">
+        <div>
+          <div style="font-size:17px;font-weight:700">📅 Tarix</div>
+          <div class="text-hint text-sm">Barcha topshiriqlar — ochiq va yopilgan</div>
+        </div>
+      </div>
+      <div id="hist-list">
+        <div class="center-box" style="padding:24px"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function loadHistory() {
+  const wrap = document.getElementById('hist-list');
+  if (!wrap) return;
+
+  const data = await api('/api/tasks/history');
+  if (!data || data.error) {
+    wrap.innerHTML = `<p class="text-hint" style="text-align:center;padding:20px">${esc((data&&data.error)||'Xatolik')}</p>`;
+    return;
+  }
+
+  S.history = data.tasks || [];
+  if (!S.history.length) {
+    wrap.innerHTML = '<p class="text-hint" style="text-align:center;padding:24px">Topshiriqlar yo\'q.</p>';
+    return;
+  }
+
+  /* Oylar bo'yicha guruh */
+  const months = {};
+  S.history.forEach(t => {
+    const d   = t.created_at ? new Date(t.created_at) : new Date();
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const lbl = d.toLocaleDateString('uz-UZ', {year:'numeric', month:'long'});
+    if (!months[key]) months[key] = {label: lbl, tasks: []};
+    months[key].tasks.push(t);
+  });
+
+  const html = Object.keys(months).sort().reverse().map(key => {
+    const {label, tasks} = months[key];
+    const cards = tasks.map(t => {
+      const dl   = deadlineInfo(t.deadline);
+      const isOpen = t.status === 'open';
+      const statusBadge = isOpen
+        ? '<span class="badge badge-wait">⏳ Ochiq</span>'
+        : '<span class="badge" style="background:var(--border);color:var(--hint)">⬛ Yopilgan</span>';
+      const myBadge = t.submitted_by_me
+        ? '<span class="badge badge-done" style="font-size:10px">✅ Topshirdim</span>'
+        : (!S.isManager ? '<span class="badge badge-over" style="font-size:10px">❌ Topshirmadim</span>' : '');
+      const p = pct(t.done_count, t.total_count);
+      const dlHtml = t.deadline
+        ? `<span class="${dl.cls||''}">📅 ${esc(dl.date)}</span>`
+        : '<span class="text-hint">Muddatsiz</span>';
+
+      /* Xodim uchun yuklab olish tugmasi */
+      let dlBtn = '';
+      if (!S.isManager && t.my_submission && t.my_submission.file_id) {
+        dlBtn = `<button class="btn btn-ghost btn-sm" style="margin-top:6px"
+                   data-act="file" data-fid="${esc(t.my_submission.file_id)}"
+                   data-fname="${esc(t.my_submission.file_name||'fayl')}">
+                   ⬇️ ${esc(t.my_submission.file_name||'Fayl')}
+                 </button>`;
+      }
+
+      return `
+      <div class="task-card" data-act="task" data-id="${t.id}" style="cursor:pointer">
+        <div class="tc-head">
+          <div class="flex gap-8 flex-wrap items-center">
+            <span class="tc-num">#${t.id}</span>
+            ${statusBadge}
+            ${myBadge}
+          </div>
+        </div>
+        <div class="tc-title">${esc(t.title)}</div>
+        <div class="tc-meta flex gap-8 flex-wrap" style="margin-top:4px">
+          ${dlHtml}
+          <span class="text-hint">👥 ${t.done_count}/${t.total_count}</span>
+        </div>
+        <div class="prog-wrap">
+          <div class="prog-bar"><div class="prog-fill ${pgCls(p)}" style="width:${p}%"></div></div>
+          <div class="prog-text">${p}% bajarildi</div>
+        </div>
+        ${dlBtn}
+      </div>`;
+    }).join('');
+
+    return `
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+                  color:var(--hint);padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:10px">
+        ${esc(label)}
+      </div>
+      <div class="tasks-container" style="padding:0;gap:8px">${cards}</div>
+    </div>`;
+  }).join('');
+
+  wrap.innerHTML = html;
+}
+
+/* ── Topshiriqni o'chirish (rahbar) ─── */
+async function doDeleteTask(id) {
+  const t = S.tasks.find(x => x.id === id) || (S.history||[]).find(x => x.id === id);
+  const ok = await showConfirm(
+    `"${t ? t.title : '#'+id}" topshiriqni o'chirishni tasdiqlaysizmi?\n\nBarcha topshirmalar ham o'chiriladi!`
+  );
+  if (!ok) return;
+  const data = await api(`/api/tasks/${id}`, {method:'DELETE'});
+  if (!data) return;
+  if (data.error) { showAlert(data.error); return; }
+  S.tasks = S.tasks.filter(x => x.id !== id);
+  S.history = (S.history||[]).filter(x => x.id !== id);
+  toast("🗑️ Topshiriq o'chirildi");
+  gotoPage('tasks');
+}
+
+/* ════════════════════════════════════════════════════════════
    Hodisalar — bitta delegatsiyalangan tinglovchi.
    Inline onclick ishlatilmaydi: apostrofli ismlar ("O'ktam")
    handlerni buzardi va XSS yo'lini ochardi.
@@ -1611,6 +1747,7 @@ document.addEventListener('click', ev => {
     case 'track-emp':   gotoPage('track-emp', {trackEmpId: parseInt(d.id,10), trackEmpName: d.name || '', trackDate: todayStr()}); break;
     case 'track-back':  gotoPage('map'); break;
     case 'track-date':  loadEmpTrack(document.getElementById('track-date-input')?.value || todayStr()); break;
+    case 'delete-task': doDeleteTask(parseInt(d.id, 10)); break;
   }
 });
 

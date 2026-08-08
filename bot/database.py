@@ -92,6 +92,8 @@ class Database:
     async def connect(self) -> None:
         self._conn = await aiosqlite.connect(self.path)
         self._conn.row_factory = aiosqlite.Row
+        await self._conn.execute("PRAGMA journal_mode=WAL")
+        await self._conn.execute("PRAGMA synchronous=NORMAL")
         await self._conn.execute("PRAGMA foreign_keys = ON")
         await self._conn.executescript(SCHEMA)
         await self._conn.commit()
@@ -322,6 +324,19 @@ class Database:
             "SELECT * FROM tasks WHERE status = 'open' ORDER BY id DESC"
         )
         return list(await cur.fetchall())
+
+    async def list_all_tasks(self) -> list[aiosqlite.Row]:
+        """Barcha topshiriqlar (ochiq va yopilgan), eng yangiları birinchi."""
+        cur = await self.conn.execute(
+            "SELECT * FROM tasks ORDER BY created_at DESC"
+        )
+        return list(await cur.fetchall())
+
+    async def delete_task(self, task_id: int) -> bool:
+        """Topshiriqni va unga bog'liq barcha yozuvlarni o'chiradi."""
+        cur = await self.conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        await self.conn.commit()
+        return cur.rowcount > 0
 
     async def close_task(self, task_id: int) -> None:
         await self.conn.execute(

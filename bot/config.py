@@ -105,7 +105,7 @@ def load_config() -> Config:
             "(namuna: .env.example)."
         )
 
-    reminders_raw = os.getenv("REMINDER_MINUTES", "120,30")
+    reminders_raw = os.getenv("REMINDER_MINUTES", "60,30")
     reminders = sorted(
         {m for m in (_parse_int(x) for x in reminders_raw.split(",")) if m and m > 0},
         reverse=True,

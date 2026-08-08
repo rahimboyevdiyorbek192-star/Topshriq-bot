@@ -438,6 +438,66 @@ async def handle_task_zip(request: web.Request) -> web.Response:
     ))
 
 
+# ── Topshiriq tarixi (barcha, ochiq + yopilgan) ────────────
+
+async def handle_history(request: web.Request) -> web.Response:
+    user, is_manager = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+
+    db: Database = request.app["db"]
+    user_id      = user["id"]
+    tasks        = await db.list_all_tasks()
+    total_emp    = await db.count_employees()
+    result       = []
+
+    for t in tasks:
+        submitted_ids = await db.submitted_employee_ids(t["id"])
+        task_files    = await db.get_task_files(t["id"])
+        my_sub        = await db.get_submission(t["id"], user_id) if not is_manager else None
+
+        result.append({
+            "id":              t["id"],
+            "title":           t["title"],
+            "description":     t["description"] or "",
+            "deadline":        t["deadline"] or "",
+            "status":          t["status"],
+            "created_at":      t["created_at"],
+            "done_count":      len(submitted_ids),
+            "total_count":     total_emp,
+            "submitted_by_me": user_id in submitted_ids,
+            "files": [
+                {"file_id": f["file_id"], "file_name": f["file_name"] or "fayl", "kind": f["file_kind"]}
+                for f in task_files
+            ],
+            "my_submission": {
+                "file_id":      my_sub["file_id"],
+                "file_name":    my_sub["file_name"],
+                "note":         my_sub["note"],
+                "submitted_at": my_sub["submitted_at"],
+            } if my_sub else None,
+        })
+
+    return _json({"tasks": result, "is_manager": is_manager, "user": user})
+
+
+# ── Topshiriqni o'chirish (rahbar) ─────────────────────────
+
+async def handle_task_delete(request: web.Request) -> web.Response:
+    user, is_mgr = await _auth_full(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if not is_mgr:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+
+    task_id = int(request.match_info.get("task_id", "0"))
+    db: Database = request.app["db"]
+    ok = await db.delete_task(task_id)
+    if not ok:
+        return _json({"error": "Topshiriq topilmadi"}, 404)
+    return _json({"ok": True})
+
+
 # ── Topshiriq yaratish (rahbar) ────────────────────────────
 
 async def handle_tasks_create(request: web.Request) -> web.Response:
@@ -915,8 +975,10 @@ def create_webapp(config: Config, db: Database, bot) -> web.Application:
 
     app.router.add_get("/api/tasks",                  handle_tasks)
     app.router.add_post("/api/tasks",                 handle_tasks_create)
+    app.router.add_get("/api/tasks/history",          handle_history)           # static — {task_id}'dan oldin
     app.router.add_get("/api/tasks/{task_id}/detail", handle_task_detail)
     app.router.add_get("/api/tasks/{task_id}/zip",    handle_task_zip)
+    app.router.add_delete("/api/tasks/{task_id}",     handle_task_delete)
     app.router.add_post("/api/submit",                handle_submit)
     app.router.add_get("/api/file/{file_id}",         handle_file_proxy)
 
