@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command

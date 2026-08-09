@@ -98,10 +98,6 @@ class AIProvider(abc.ABC):
             "title": "", "deadline": "", "description": "",
         }
 
-    async def classify_task(self, message_text: str) -> dict[str, Any]:
-        """Eski nom — moslik uchun saqlangan."""
-        return await self.classify_message(message_text)
-
     # ── 3. Rasmdagi matn va jadvalni o'qish ───────────────────
 
     async def read_image(
