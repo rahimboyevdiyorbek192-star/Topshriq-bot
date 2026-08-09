@@ -118,6 +118,10 @@ class Database:
             "ALTER TABLE submission_files ADD COLUMN local_path TEXT",
             "ALTER TABLE submissions ADD COLUMN exif_device TEXT",
             "ALTER TABLE submissions ADD COLUMN exif_gps TEXT",
+            "ALTER TABLE employees ADD COLUMN sector INTEGER",
+            "ALTER TABLE employees ADD COLUMN is_assistant_manager INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE tasks ADD COLUMN target_sector INTEGER",
+            "ALTER TABLE tasks ADD COLUMN creator_name TEXT",
             "ALTER TABLE submission_files ADD COLUMN exif_device TEXT",
             "ALTER TABLE submission_files ADD COLUMN exif_gps TEXT",
         ]:
@@ -218,18 +222,31 @@ class Database:
         )
         return await cur.fetchone()
 
-    async def list_employees(self, active_only: bool = True) -> list[aiosqlite.Row]:
+    async def list_employees(
+        self, active_only: bool = True, sector: int | None = None
+    ) -> list[aiosqlite.Row]:
+        conds = ["active = 1"] if active_only else []
+        params: list = []
+        if sector is not None:
+            conds.append("sector = ?")
+            params.append(sector)
         q = "SELECT * FROM employees"
-        if active_only:
-            q += " WHERE active = 1"
+        if conds:
+            q += " WHERE " + " AND ".join(conds)
         q += " ORDER BY full_name COLLATE NOCASE"
-        cur = await self.conn.execute(q)
+        cur = await self.conn.execute(q, params)
         return list(await cur.fetchall())
 
-    async def count_employees(self) -> int:
-        cur = await self.conn.execute(
-            "SELECT COUNT(*) AS c FROM employees WHERE active = 1"
-        )
+    async def count_employees(self, sector: int | None = None) -> int:
+        if sector is not None:
+            cur = await self.conn.execute(
+                "SELECT COUNT(*) AS c FROM employees WHERE active = 1 AND sector = ?",
+                (sector,),
+            )
+        else:
+            cur = await self.conn.execute(
+                "SELECT COUNT(*) AS c FROM employees WHERE active = 1"
+            )
         row = await cur.fetchone()
         return row["c"] if row else 0
 
@@ -317,23 +334,20 @@ class Database:
         src_chat_id: int | None,
         src_msg_id: int | None,
         required_files: int = 0,
+        target_sector: int | None = None,
+        creator_name: str | None = None,
     ) -> int:
         cur = await self.conn.execute(
             """
             INSERT INTO tasks
                 (title, description, deadline, created_by, src_chat_id, src_msg_id,
-                 required_files, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 required_files, target_sector, creator_name, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                title,
-                description,
-                deadline,
-                created_by,
-                src_chat_id,
-                src_msg_id,
-                required_files,
-                datetime.now().isoformat(),
+                title, description, deadline, created_by,
+                src_chat_id, src_msg_id, required_files,
+                target_sector, creator_name, datetime.now().isoformat(),
             ),
         )
         await self.conn.commit()
@@ -370,17 +384,33 @@ class Database:
         )
         return await cur.fetchone()
 
-    async def list_open_tasks(self) -> list[aiosqlite.Row]:
-        cur = await self.conn.execute(
-            "SELECT * FROM tasks WHERE status = 'open' ORDER BY id DESC"
-        )
+    async def list_open_tasks(self, sector: int | None = None) -> list[aiosqlite.Row]:
+        """Ochiq topshiriqlar. sector berilsa — faqat shu sektorn va umumiy (NULL) topshiriqlar."""
+        if sector is not None:
+            cur = await self.conn.execute(
+                """SELECT * FROM tasks WHERE status = 'open'
+                   AND (target_sector = ? OR target_sector IS NULL)
+                   ORDER BY id DESC""",
+                (sector,),
+            )
+        else:
+            cur = await self.conn.execute(
+                "SELECT * FROM tasks WHERE status = 'open' ORDER BY id DESC"
+            )
         return list(await cur.fetchall())
 
-    async def list_all_tasks(self) -> list[aiosqlite.Row]:
+    async def list_all_tasks(self, sector: int | None = None) -> list[aiosqlite.Row]:
         """Barcha topshiriqlar (ochiq va yopilgan), eng yangiları birinchi."""
-        cur = await self.conn.execute(
-            "SELECT * FROM tasks ORDER BY created_at DESC"
-        )
+        if sector is not None:
+            cur = await self.conn.execute(
+                """SELECT * FROM tasks WHERE (target_sector = ? OR target_sector IS NULL)
+                   ORDER BY created_at DESC""",
+                (sector,),
+            )
+        else:
+            cur = await self.conn.execute(
+                "SELECT * FROM tasks ORDER BY created_at DESC"
+            )
         return list(await cur.fetchall())
 
     async def delete_task(self, task_id: int) -> bool:
@@ -616,30 +646,37 @@ class Database:
     async def add_employee_web(
         self, full_name: str, position: str, login_phone: str, password_hash: str,
         tg_id: int | None = None,
+        sector: int | None = None,
+        is_assistant_manager: int = 0,
     ) -> int:
         if tg_id is not None and tg_id > 0:
             existing = await self.get_employee(tg_id)
             if existing:
                 await self.conn.execute(
                     """UPDATE employees SET full_name=?, position=?, login_phone=?,
-                       password_hash=? WHERE tg_id=?""",
-                    (full_name, position, login_phone, password_hash, tg_id),
+                       password_hash=?, sector=?, is_assistant_manager=? WHERE tg_id=?""",
+                    (full_name, position, login_phone, password_hash,
+                     sector, is_assistant_manager, tg_id),
                 )
             else:
                 await self.conn.execute(
                     """INSERT INTO employees
-                       (tg_id, full_name, username, active, created_at, position, login_phone, password_hash)
-                       VALUES (?,?,NULL,1,?,?,?,?)""",
-                    (tg_id, full_name, datetime.now().isoformat(), position, login_phone, password_hash),
+                       (tg_id, full_name, username, active, created_at, position,
+                        login_phone, password_hash, sector, is_assistant_manager)
+                       VALUES (?,?,NULL,1,?,?,?,?,?,?)""",
+                    (tg_id, full_name, datetime.now().isoformat(), position,
+                     login_phone, password_hash, sector, is_assistant_manager),
                 )
             await self.conn.commit()
             return tg_id
         tg_id = await self._next_web_id()
         await self.conn.execute(
             """INSERT INTO employees
-               (tg_id, full_name, username, active, created_at, position, login_phone, password_hash)
-               VALUES (?,?,NULL,1,?,?,?,?)""",
-            (tg_id, full_name, datetime.now().isoformat(), position, login_phone, password_hash),
+               (tg_id, full_name, username, active, created_at, position,
+                login_phone, password_hash, sector, is_assistant_manager)
+               VALUES (?,?,NULL,1,?,?,?,?,?,?)""",
+            (tg_id, full_name, datetime.now().isoformat(), position,
+             login_phone, password_hash, sector, is_assistant_manager),
         )
         await self.conn.commit()
         return tg_id
@@ -652,17 +689,23 @@ class Database:
         login_phone: str,
         password_hash: Optional[str],
         active: int,
+        sector: int | None = None,
+        is_assistant_manager: int = 0,
     ) -> None:
         if password_hash:
             await self.conn.execute(
                 """UPDATE employees SET full_name=?,position=?,login_phone=?,
-                   password_hash=?,active=? WHERE tg_id=?""",
-                (full_name, position, login_phone, password_hash, active, tg_id),
+                   password_hash=?,active=?,sector=?,is_assistant_manager=?
+                   WHERE tg_id=?""",
+                (full_name, position, login_phone, password_hash,
+                 active, sector, is_assistant_manager, tg_id),
             )
         else:
             await self.conn.execute(
-                "UPDATE employees SET full_name=?,position=?,login_phone=?,active=? WHERE tg_id=?",
-                (full_name, position, login_phone, active, tg_id),
+                """UPDATE employees SET full_name=?,position=?,login_phone=?,
+                   active=?,sector=?,is_assistant_manager=? WHERE tg_id=?""",
+                (full_name, position, login_phone, active,
+                 sector, is_assistant_manager, tg_id),
             )
         await self.conn.commit()
 

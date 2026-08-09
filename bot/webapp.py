@@ -215,6 +215,51 @@ async def _auth_full(request: web.Request) -> tuple[dict | None, bool]:
     return None, False
 
 
+async def _get_mgr_level(
+    request: web.Request,
+) -> tuple[dict | None, bool, int | None]:
+    """(user, is_mgr, am_sector) qaytaradi.
+
+    is_mgr=True  am_sector=None → bosh rahbar (hamma narsani ko'radi)
+    is_mgr=True  am_sector=N   → rahbar yordamchisi (faqat N-sektor)
+    is_mgr=False am_sector=None → oddiy xodim
+    """
+    config: Config = request.app["config"]
+    db: Database   = request.app["db"]
+
+    init_data = (
+        request.headers.get("X-Telegram-Init-Data", "")
+        or request.rel_url.query.get("init", "")
+    )
+    if init_data:
+        user = _validate_init_data(init_data, config.bot_token)
+        if user:
+            return user, config.is_manager(user.get("id", 0)), None
+
+    token = (
+        request.headers.get("X-Session-Token", "")
+        or request.rel_url.query.get("token", "")
+    )
+    if token:
+        session = await db.get_web_session(token)
+        if session:
+            if session["is_manager"]:
+                return {"id": 0, "first_name": "Rahbar"}, True, None
+            emp = await db.get_employee(session["tg_id"])
+            if emp and emp["active"]:
+                is_mgr = config.is_manager(emp["tg_id"])
+                am_sector: int | None = None
+                if not is_mgr and emp["is_assistant_manager"] and emp["sector"] is not None:
+                    is_mgr = True
+                    am_sector = int(emp["sector"])
+                return (
+                    {"id": emp["tg_id"], "first_name": emp["full_name"]},
+                    is_mgr,
+                    am_sector,
+                )
+    return None, False, None
+
+
 def _cors(resp: web.Response) -> web.Response:
     resp.headers["Access-Control-Allow-Origin"]  = "*"
     resp.headers["Access-Control-Allow-Headers"] = (
@@ -288,7 +333,11 @@ async def handle_login(request: web.Request) -> web.Response:
         return _json({"error": "Hisobingiz faol emas"}, 403)
 
     is_mgr = config.is_manager(emp["tg_id"])
-    token  = await db.create_web_session(tg_id=emp["tg_id"], is_manager=is_mgr)
+    am_sector: int | None = None
+    if not is_mgr and emp["is_assistant_manager"] and emp["sector"] is not None:
+        am_sector = int(emp["sector"])
+
+    token = await db.create_web_session(tg_id=emp["tg_id"], is_manager=is_mgr)
 
     if lat is not None and lon is not None:
         try:
@@ -296,12 +345,11 @@ async def handle_login(request: web.Request) -> web.Response:
         except Exception:
             pass
 
-    return _json({
-        "ok":    True,
-        "token": token,
-        "role":  "manager" if is_mgr else "employee",
-        "name":  emp["full_name"],
-    })
+    role = "manager" if is_mgr else ("assistant_manager" if am_sector is not None else "employee")
+    resp: dict = {"ok": True, "token": token, "role": role, "name": emp["full_name"]}
+    if am_sector is not None:
+        resp["sector"] = am_sector
+    return _json(resp)
 
 
 async def handle_logout(request: web.Request) -> web.Response:
@@ -325,14 +373,14 @@ async def handle_me(request: web.Request) -> web.Response:
 # ── Topshiriqlar ───────────────────────────────────────────
 
 async def handle_tasks(request: web.Request) -> web.Response:
-    user, is_manager = await _auth_full(request)
+    user, is_manager, am_sector = await _get_mgr_level(request)
     if not user:
         return _json({"error": "Ruxsat yo'q"}, 401)
 
     db: Database = request.app["db"]
     user_id      = user["id"]
-    tasks        = await db.list_open_tasks()
-    total_emp    = await db.count_employees()
+    tasks        = await db.list_open_tasks(sector=am_sector)
+    total_emp    = await db.count_employees(sector=am_sector)
     result       = []
 
     for t in tasks:
@@ -350,6 +398,7 @@ async def handle_tasks(request: web.Request) -> web.Response:
             "title":           t["title"],
             "description":     t["description"] or "",
             "deadline":        t["deadline"] or "",
+            "creator_name":    t["creator_name"] if "creator_name" in t.keys() else "",
             "submitted_by_me": submitted_me,
             "done_count":      len(submitted_ids),
             "total_count":     total_emp,
@@ -370,12 +419,12 @@ async def handle_tasks(request: web.Request) -> web.Response:
             } if my_sub else None,
         })
 
-    return _json({"tasks": result, "is_manager": is_manager, "user": user})
+    return _json({"tasks": result, "is_manager": is_manager, "am_sector": am_sector, "user": user})
 
 
 async def handle_task_detail(request: web.Request) -> web.Response:
     """Rahbar uchun topshiriq bo'yicha batafsil svodka."""
-    user, is_mgr = await _auth_full(request)
+    user, is_mgr, am_sector = await _get_mgr_level(request)
     if not user:
         return _json({"error": "Ruxsat yo'q"}, 401)
     if not is_mgr:
@@ -388,8 +437,14 @@ async def handle_task_detail(request: web.Request) -> web.Response:
     if not task:
         return _json({"error": "Topshiriq topilmadi"}, 404)
 
+    # AM faqat o'z sektori topshiriqlarini ko'ra oladi
+    if am_sector is not None:
+        t_sector = task["target_sector"] if "target_sector" in task.keys() else None
+        if t_sector is not None and t_sector != am_sector:
+            return _json({"error": "Ruxsat yo'q"}, 403)
+
     submissions = await db.get_all_task_submissions(task_id)
-    total_emp   = await db.count_employees()
+    total_emp   = await db.count_employees(sector=am_sector)
     task_files  = await db.get_task_files(task_id)
 
     return _json({
@@ -429,7 +484,7 @@ async def handle_task_detail(request: web.Request) -> web.Response:
 
 async def handle_task_zip(request: web.Request) -> web.Response:
     """Topshiriq uchun barcha fayllarni ZIP qilib yuboradi."""
-    user, is_mgr = await _auth_full(request)
+    user, is_mgr, am_sector = await _get_mgr_level(request)
     if not user:
         return web.Response(status=401)
     if not is_mgr:
@@ -536,14 +591,14 @@ async def handle_task_zip(request: web.Request) -> web.Response:
 # ── Topshiriq tarixi (barcha, ochiq + yopilgan) ────────────
 
 async def handle_history(request: web.Request) -> web.Response:
-    user, is_manager = await _auth_full(request)
+    user, is_manager, am_sector = await _get_mgr_level(request)
     if not user:
         return _json({"error": "Ruxsat yo'q"}, 401)
 
     db: Database = request.app["db"]
     user_id      = user["id"]
-    tasks        = await db.list_all_tasks()
-    total_emp    = await db.count_employees()
+    tasks        = await db.list_all_tasks(sector=am_sector)
+    total_emp    = await db.count_employees(sector=am_sector)
     result       = []
 
     for t in tasks:
@@ -563,6 +618,7 @@ async def handle_history(request: web.Request) -> web.Response:
             "deadline":        t["deadline"] or "",
             "status":          t["status"],
             "created_at":      t["created_at"],
+            "creator_name":    t["creator_name"] if "creator_name" in t.keys() else "",
             "done_count":      len(submitted_ids),
             "total_count":     total_emp,
             "submitted_by_me": submitted_me,
@@ -580,17 +636,17 @@ async def handle_history(request: web.Request) -> web.Response:
             } if my_sub else None,
         })
 
-    return _json({"tasks": result, "is_manager": is_manager, "user": user})
+    return _json({"tasks": result, "is_manager": is_manager, "am_sector": am_sector, "user": user})
 
 
-# ── Topshiriqni o'chirish (rahbar) ─────────────────────────
+# ── Topshiriqni o'chirish (faqat bosh rahbar) ──────────────
 
 async def handle_task_delete(request: web.Request) -> web.Response:
-    user, is_mgr = await _auth_full(request)
+    user, is_mgr, am_sector = await _get_mgr_level(request)
     if not user:
         return _json({"error": "Ruxsat yo'q"}, 401)
-    if not is_mgr:
-        return _json({"error": "Faqat rahbar uchun"}, 403)
+    if not is_mgr or am_sector is not None:
+        return _json({"error": "Faqat bosh rahbar uchun"}, 403)
 
     task_id = int(request.match_info.get("task_id", "0"))
     db: Database = request.app["db"]
@@ -603,8 +659,8 @@ async def handle_task_delete(request: web.Request) -> web.Response:
 # ── Topshiriq yaratish (rahbar) ────────────────────────────
 
 async def handle_tasks_create(request: web.Request) -> web.Response:
-    """Rahbar uchun yangi topshiriq yaratadi."""
-    user, is_mgr = await _auth_full(request)
+    """Rahbar (yoki rahbar yordamchisi) uchun yangi topshiriq yaratadi."""
+    user, is_mgr, am_sector = await _get_mgr_level(request)
     if not user:
         return _json({"error": "Ruxsat yo'q"}, 401)
     if not is_mgr:
@@ -655,6 +711,10 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
     db: Database   = request.app["db"]
     config: Config = request.app["config"]
 
+    creator_name: str | None = None
+    if am_sector is not None:
+        creator_name = user.get("first_name") or "Rahbar Yordamchisi"
+
     task_id = await db.create_task(
         title=title,
         description=description,
@@ -663,6 +723,8 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
         src_chat_id=None,
         src_msg_id=None,
         required_files=required_files,
+        target_sector=am_sector,
+        creator_name=creator_name,
     )
 
     # Namuna fayllarni Telegram'ga yuborish va task_files ga saqlash
@@ -688,11 +750,14 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
         bot = request.app["bot"]
         if config.execution_group_id:
             dl_text = format_deadline(deadline, config.tz) if deadline else "belgilanmagan"
+            sector_tag = f" (Sektor {am_sector})" if am_sector else ""
             text = (
-                f"📋 <b>Yangi topshiriq #{task_id}</b>\n"
+                f"📋 <b>Yangi topshiriq #{task_id}{sector_tag}</b>\n"
                 f"📌 {title}\n"
                 f"📅 Muddat: {dl_text}"
             )
+            if creator_name:
+                text += f"\n👤 {creator_name} (Rahbar Yordamchisi)"
             if description:
                 text += f"\n📝 {description[:200]}"
             if required_files:
@@ -935,33 +1000,37 @@ async def handle_file_proxy(request: web.Request) -> web.Response:
 # ── Xodimlar boshqaruvi (rahbar) ───────────────────────────
 
 async def handle_employees_list(request: web.Request) -> web.Response:
-    user, is_mgr = await _auth_full(request)
+    user, is_mgr, am_sector = await _get_mgr_level(request)
     if not user:
         return _json({"error": "Ruxsat yo'q"}, 401)
     if not is_mgr:
         return _json({"error": "Faqat rahbar uchun"}, 403)
     db: Database = request.app["db"]
     emps = await db.list_employees_web()
+    if am_sector is not None:
+        emps = [e for e in emps if e["sector"] == am_sector]
     return _json({"employees": [
         {
-            "tg_id":        e["tg_id"],
-            "full_name":    e["full_name"],
-            "position":     e["position"] or "",
-            "login_phone":  e["login_phone"] or "",
-            "username":     e["username"] or "",
-            "active":       bool(e["active"]),
-            "has_password": bool(e["password_hash"]),
+            "tg_id":                e["tg_id"],
+            "full_name":            e["full_name"],
+            "position":             e["position"] or "",
+            "login_phone":          e["login_phone"] or "",
+            "username":             e["username"] or "",
+            "active":               bool(e["active"]),
+            "has_password":         bool(e["password_hash"]),
+            "sector":               e["sector"],
+            "is_assistant_manager": bool(e["is_assistant_manager"]),
         }
         for e in emps
     ]})
 
 
 async def handle_employees_add(request: web.Request) -> web.Response:
-    user, is_mgr = await _auth_full(request)
+    user, is_mgr, am_sector = await _get_mgr_level(request)
     if not user:
         return _json({"error": "Ruxsat yo'q"}, 401)
-    if not is_mgr:
-        return _json({"error": "Faqat rahbar uchun"}, 403)
+    if not is_mgr or am_sector is not None:
+        return _json({"error": "Faqat bosh rahbar uchun"}, 403)
     try:
         data = await request.json()
     except Exception:
@@ -985,22 +1054,37 @@ async def handle_employees_add(request: web.Request) -> web.Response:
     except (ValueError, TypeError):
         pass
 
+    sector: int | None = None
+    try:
+        raw_s = data.get("sector")
+        if raw_s:
+            v = int(raw_s)
+            if 1 <= v <= 4:
+                sector = v
+    except (ValueError, TypeError):
+        pass
+
+    is_am = 1 if data.get("is_assistant_manager") else 0
+
     db: Database = request.app["db"]
     existing_phone = await db.get_employee_by_login_phone(login_phone)
     if existing_phone and (tg_id_web is None or existing_phone["tg_id"] != tg_id_web):
         return _json({"error": "Bu telefon raqam allaqachon ro'yxatda"}, 409)
 
     pw_hash = Database.hash_password(password)
-    tg_id   = await db.add_employee_web(full_name, position, login_phone, pw_hash, tg_id=tg_id_web)
+    tg_id   = await db.add_employee_web(
+        full_name, position, login_phone, pw_hash,
+        tg_id=tg_id_web, sector=sector, is_assistant_manager=is_am,
+    )
     return _json({"ok": True, "tg_id": tg_id})
 
 
 async def handle_employees_update(request: web.Request) -> web.Response:
-    user, is_mgr = await _auth_full(request)
+    user, is_mgr, am_sector = await _get_mgr_level(request)
     if not user:
         return _json({"error": "Ruxsat yo'q"}, 401)
-    if not is_mgr:
-        return _json({"error": "Faqat rahbar uchun"}, 403)
+    if not is_mgr or am_sector is not None:
+        return _json({"error": "Faqat bosh rahbar uchun"}, 403)
     tg_id = int(request.match_info.get("tg_id", "0"))
     try:
         data = await request.json()
@@ -1016,18 +1100,33 @@ async def handle_employees_update(request: web.Request) -> web.Response:
     if not full_name or not login_phone:
         return _json({"error": "Ism va telefon majburiy"}, 400)
 
+    sector: int | None = None
+    try:
+        raw_s = data.get("sector")
+        if raw_s:
+            v = int(raw_s)
+            if 1 <= v <= 4:
+                sector = v
+    except (ValueError, TypeError):
+        pass
+
+    is_am = 1 if data.get("is_assistant_manager") else 0
+
     db: Database = request.app["db"]
     pw_hash = Database.hash_password(password) if password else None
-    await db.update_employee_web(tg_id, full_name, position, login_phone, pw_hash, active)
+    await db.update_employee_web(
+        tg_id, full_name, position, login_phone, pw_hash, active,
+        sector=sector, is_assistant_manager=is_am,
+    )
     return _json({"ok": True})
 
 
 async def handle_employees_delete(request: web.Request) -> web.Response:
-    user, is_mgr = await _auth_full(request)
+    user, is_mgr, am_sector = await _get_mgr_level(request)
     if not user:
         return _json({"error": "Ruxsat yo'q"}, 401)
-    if not is_mgr:
-        return _json({"error": "Faqat rahbar uchun"}, 403)
+    if not is_mgr or am_sector is not None:
+        return _json({"error": "Faqat bosh rahbar uchun"}, 403)
     tg_id = int(request.match_info.get("tg_id", "0"))
     db: Database = request.app["db"]
     await db.delete_employee_web(tg_id)

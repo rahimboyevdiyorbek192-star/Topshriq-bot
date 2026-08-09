@@ -485,7 +485,7 @@ const MAX_UPLOAD = 50 * 1024 * 1024;   // server chegarasi bilan bir xil
 
 function freshState() {
   return {
-    page:'loading', isManager:false, user:null,
+    page:'loading', isManager:false, amSector:null, user:null,
     tasks:[], activeTask:null, detail:null, employees:[],
     selFiles:[], ctFiles:[], note:'', myFiles:[],
     trackEmpId: null, trackEmpName: '', trackDate: '',
@@ -749,9 +749,12 @@ function gotoPage(page, extra) {
 /* ── Karkas ──────────────────────────────────────────────── */
 function shell() {
   const name    = (S.user && S.user.first_name) || 'Xodim';
-  const role    = S.isManager ? '👔 Rahbar' : '👤 Xodim';
+  const role    = S.isManager
+    ? (S.amSector !== null ? `👔 Rahbar Yordamchisi (${S.amSector}-sektor)` : '👔 Rahbar')
+    : '👤 Xodim';
   const inTasks = S.page === 'tasks' || S.page === 'task-detail';
 
+  const isAM = S.isManager && S.amSector !== null;
   const mgrNav = S.isManager ? `
     <button class="nav-item ${S.page === 'create-task' ? 'active' : ''}" data-act="page" data-page="create-task">
       <span class="nav-icon">➕</span> Topshiriq qo'shish
@@ -762,9 +765,9 @@ function shell() {
     <button class="nav-item ${S.page === 'map' ? 'active' : ''}" data-act="page" data-page="map">
       <span class="nav-icon">📍</span> Joylashuv
     </button>
-    <button class="nav-item ${S.page === 'settings' ? 'active' : ''}" data-act="page" data-page="settings">
+    ${!isAM ? `<button class="nav-item ${S.page === 'settings' ? 'active' : ''}" data-act="page" data-page="settings">
       <span class="nav-icon">⚙️</span> Sozlamalar
-    </button>` : '';
+    </button>` : ''}` : '';
 
   const mgrBnav = S.isManager ? `
     <button class="bnav-item ${S.page === 'create-task' ? 'active' : ''}" data-act="page" data-page="create-task">
@@ -773,9 +776,9 @@ function shell() {
     <button class="bnav-item ${S.page === 'employees' ? 'active' : ''}" data-act="page" data-page="employees">
       <span class="bnav-icon">👥</span>Xodimlar
     </button>
-    <button class="bnav-item ${S.page === 'settings' ? 'active' : ''}" data-act="page" data-page="settings">
+    ${!isAM ? `<button class="bnav-item ${S.page === 'settings' ? 'active' : ''}" data-act="page" data-page="settings">
       <span class="bnav-icon">⚙️</span>Sozlamalar
-    </button>
+    </button>` : ''}
     <button class="bnav-item ${S.page === 'map' ? 'active' : ''}" data-act="page" data-page="map">
       <span class="bnav-icon">📍</span>Xarita
     </button>` : '';
@@ -926,7 +929,8 @@ async function doLogin() {
     }
     Store.setToken(data.token, rem);
     S = freshState();
-    S.isManager = data.role === 'manager';
+    S.isManager = data.role === 'manager' || data.role === 'assistant_manager';
+    S.amSector  = data.sector || null;
     S.user      = {first_name: data.name};
     if (!S.isManager) startLocationTracking();
     if (await loadTasks()) render({page:'tasks'});
@@ -952,6 +956,7 @@ async function loadTasks() {
   if (data.error) { showAlert(data.error); return false; }
   S.tasks     = data.tasks || [];
   S.isManager = !!data.is_manager;
+  S.amSector  = data.am_sector || null;
   if (!S.user) S.user = data.user;
   return true;
 }
@@ -992,9 +997,12 @@ function taskListPage() {
     } else {
       badge = '<span class="badge badge-wait">⏳ Kutilmoqda</span>';
     }
+    const creatorBadge = t.creator_name
+      ? `<span class="badge" style="background:var(--primary-bg);color:var(--primary);font-size:10px;margin-left:4px">🔵 ${esc(t.creator_name)}</span>`
+      : '';
     return `
     <div class="task-card" data-act="task" data-id="${t.id}">
-      <div class="tc-head"><span class="tc-num">#${t.id}</span>${badge}</div>
+      <div class="tc-head"><span class="tc-num">#${t.id}</span>${badge}${creatorBadge}</div>
       <div class="tc-title">${esc(t.title)}</div>
       <div class="tc-meta">
         <span>📅 ${esc(dl.date)}</span>
@@ -1127,7 +1135,7 @@ function mgrDetailPage() {
   <div class="detail-body pad-nav">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
       <button class="btn btn-ghost btn-sm" data-act="page" data-page="tasks">← Orqaga</button>
-      <button class="btn btn-sm" style="color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger)" data-act="delete-task" data-id="${t.id}">🗑️ O'chirish</button>
+      ${S.amSector === null ? `<button class="btn btn-sm" style="color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger)" data-act="delete-task" data-id="${t.id}">🗑️ O'chirish</button>` : ''}
     </div>
     ${taskHeaderHtml(t)}
 
@@ -1527,10 +1535,16 @@ function dlZip(taskId) {
    Topshiriq yaratish
    ════════════════════════════════════════════════════════════ */
 function createTaskPage() {
+  const amNote = S.amSector !== null
+    ? `<div class="form-hint" style="background:var(--primary-bg);color:var(--primary);padding:8px 10px;border-radius:8px;margin-bottom:12px">
+         🔵 Bu topshiriq faqat <strong>${S.amSector}-sektor</strong> xodimlariga ko'rinadi
+       </div>`
+    : '';
   return `
   <div class="detail-body pad-nav">
     <div class="sec-card">
       <div class="sec-title">➕ Yangi topshiriq yaratish</div>
+      ${amNote}
       <div class="form-group">
         <label class="form-label" for="ct-title">Topshiriq nomi *</label>
         <input class="form-input" id="ct-title" type="text" placeholder="Masalan: Hisobot tayyorlash">
@@ -1644,11 +1658,19 @@ async function loadEmployees() {
 function employeesPage() {
   const emps   = S.employees;
   const active = emps.filter(e => e.active).length;
+  const canEdit = S.amSector === null;
 
-  const rows = emps.length ? emps.map(e => `
+  const rows = emps.length ? emps.map(e => {
+    const sectorBadge = e.sector
+      ? `<span class="badge" style="background:var(--primary-bg);color:var(--primary);font-size:10px">${e.sector}-sektor</span>`
+      : '';
+    const amBadge = e.is_assistant_manager
+      ? `<span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px">R.Y.</span>`
+      : '';
+    return `
     <tr class="${e.active ? '' : 'emp-inactive'}">
       <td>
-        <div style="font-weight:600">${esc(e.full_name)}</div>
+        <div style="font-weight:600">${esc(e.full_name)} ${sectorBadge} ${amBadge}</div>
         ${e.position ? `<div class="text-hint" style="font-size:12px">${esc(e.position)}</div>` : ''}
       </td>
       <td class="hide-sm">${esc(e.login_phone || '—')}</td>
@@ -1659,24 +1681,25 @@ function employeesPage() {
         ? '<span class="badge badge-done">✅ Faol</span>'
         : '<span class="badge badge-over">⛔ Nofaol</span>'}</td>
       <td>
-        <div class="flex gap-8">
+        ${canEdit ? `<div class="flex gap-8">
           <button class="btn btn-ghost btn-sm" data-act="emp-edit" data-id="${e.tg_id}">✏️</button>
           <button class="btn btn-ghost btn-sm" data-act="emp-del"  data-id="${e.tg_id}">🗑️</button>
-        </div>
+        </div>` : '—'}
       </td>
-    </tr>`).join('')
+    </tr>`;
+  }).join('')
     : `<tr><td colspan="5" class="text-hint" style="text-align:center;padding:20px">
-         Xodimlar yo'q. "Qo'shish" tugmasini bosing.</td></tr>`;
+         Xodimlar yo'q${canEdit ? '. "Qo\'shish" tugmasini bosing' : ''}.</td></tr>`;
 
   return `
   <div class="detail-body pad-nav">
     <div class="sec-card">
       <div class="flex items-center justify-between" style="margin-bottom:12px">
         <div>
-          <div style="font-size:17px;font-weight:700">Xodimlar</div>
+          <div style="font-size:17px;font-weight:700">Xodimlar${S.amSector !== null ? ` (${S.amSector}-sektor)` : ''}</div>
           <div class="text-hint text-sm">${active} faol / ${emps.length} jami</div>
         </div>
-        <button class="btn btn-primary btn-sm" data-act="emp-add">➕ Qo'shish</button>
+        ${canEdit ? '<button class="btn btn-primary btn-sm" data-act="emp-add">➕ Qo\'shish</button>' : ''}
       </div>
       <div class="table-wrap">
         <table class="emp-table">
@@ -1960,6 +1983,25 @@ function openEmpModal(tgId) {
         <div class="pw-bar"><div class="pw-fill" id="pwfill"></div></div>
         <div class="pw-text" id="pwtxt"></div>
       </div>
+      <div class="form-group">
+        <label class="form-label" for="em-sector">Sektor</label>
+        <select class="form-input" id="em-sector">
+          <option value="" ${!(emp && emp.sector) ? 'selected' : ''}>— Sektor tanlanmagan —</option>
+          <option value="1" ${emp && emp.sector == 1 ? 'selected' : ''}>1-sektor</option>
+          <option value="2" ${emp && emp.sector == 2 ? 'selected' : ''}>2-sektor</option>
+          <option value="3" ${emp && emp.sector == 3 ? 'selected' : ''}>3-sektor</option>
+          <option value="4" ${emp && emp.sector == 4 ? 'selected' : ''}>4-sektor</option>
+        </select>
+        <div class="form-hint">Xodim qaysi sektorga tegishli</div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="em-am" ${emp && emp.is_assistant_manager ? 'checked' : ''}
+                 style="width:16px;height:16px;accent-color:var(--primary)">
+          <span class="form-label" style="margin:0">Rahbar Yordamchisi</span>
+        </label>
+        <div class="form-hint">Bu xodim o'z sektori uchun topshiriq bera oladi</div>
+      </div>
       ${edit ? `
       <div class="form-group">
         <label class="form-label" for="em-active">Holat</label>
@@ -2011,17 +2053,25 @@ async function saveEmp(tgId) {
   if (tgId == null && !pw)  { formError('em-err', 'Parol majburiy'); return; }
 
   formError('em-err', '');
+  const sectorVal = (document.getElementById('em-sector') || {}).value || '';
+  const sectorNum = sectorVal ? parseInt(sectorVal, 10) : null;
+  const isAM      = !!(document.getElementById('em-am') || {}).checked;
+
   try {
     let data;
     if (tgId == null) {
       const body = {full_name:name, position:pos, login_phone:phone, password:pw};
       const tgIdVal = (document.getElementById('em-tgid') || {}).value || '';
       if (tgIdVal) { const n = parseInt(tgIdVal, 10); if (n > 0) body.tg_id = n; }
+      if (sectorNum) body.sector = sectorNum;
+      body.is_assistant_manager = isAM ? 1 : 0;
       data = await api('/api/employees', {method:'POST', body});
     } else {
       const body = {full_name:name, position:pos, login_phone:phone,
                     active: activeEl ? parseInt(activeEl.value, 10) : 1};
       if (pw) body.password = pw;
+      if (sectorNum) body.sector = sectorNum; else body.sector = null;
+      body.is_assistant_manager = isAM ? 1 : 0;
       data = await api(`/api/employees/${tgId}`, {method:'PUT', body});
     }
     if (!data) return;
@@ -2190,8 +2240,11 @@ function renderHistList() {
       let dlBtn='';
       if(!S.isManager&&t.my_submission&&t.my_submission.file_id)
         dlBtn=`<button class="btn btn-ghost btn-sm" style="margin-top:6px" data-act="file" data-fid="${esc(t.my_submission.file_id)}" data-fname="${esc(t.my_submission.file_name||'fayl')}">⬇️ ${esc(t.my_submission.file_name||'Fayl')}</button>`;
+      const histCreatorBadge = t.creator_name
+        ? `<span class="badge" style="background:var(--primary-bg);color:var(--primary);font-size:10px">🔵 ${esc(t.creator_name)}</span>`
+        : '';
       return `<div class="task-card" data-act="task" data-id="${t.id}" style="cursor:pointer">
-        <div class="tc-head"><div class="flex gap-8 flex-wrap items-center"><span class="tc-num">#${t.id}</span>${statusBadge}${myBadge}</div></div>
+        <div class="tc-head"><div class="flex gap-8 flex-wrap items-center"><span class="tc-num">#${t.id}</span>${statusBadge}${myBadge}${histCreatorBadge}</div></div>
         <div class="tc-title">${esc(t.title)}</div>
         <div class="tc-meta flex gap-8 flex-wrap" style="margin-top:4px">${dlHtml}<span class="text-hint">👥 ${t.done_count}/${t.total_count}</span></div>
         <div class="prog-wrap"><div class="prog-bar"><div class="prog-fill ${pgCls(p)}" style="width:${p}%"></div></div><div class="prog-text">${p}% bajarildi</div></div>
