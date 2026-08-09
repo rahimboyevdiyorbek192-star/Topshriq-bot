@@ -1236,10 +1236,11 @@ function empDetailPage() {
       <div class="sec-title">📤 Mening topshiriqim</div>
       ${banner}
       <div class="upload-area" id="uarea">
-        <input type="file" id="finput" multiple>
+        <input type="file" id="finput" multiple
+          accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.tar,.gz,.txt,.csv">
         <span class="upload-icon">📁</span>
-        <span class="upload-lbl">Fayl yoki rasm tanlash</span>
-        <span class="upload-hint">Word, Excel, PDF, JPG/JPEG · Bir nechta mumkin · Maksimum 50 MB</span>
+        <span class="upload-lbl">Fayl yoki rasm tanlang</span>
+        <span class="upload-hint">Rasm, Word, Excel, PDF, ZIP/RAR arxiv · Bir nechta mumkin · Maks 50 MB</span>
       </div>
       <div style="margin-top:6px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <label class="btn btn-ghost btn-sm" style="cursor:pointer">
@@ -1249,6 +1250,10 @@ function empDetailPage() {
         <label class="btn btn-ghost btn-sm" style="cursor:pointer">
           🖼️ Galereya
           <input id="finput-gallery" type="file" accept="image/*" multiple style="display:none">
+        </label>
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+          🗜️ Arxiv
+          <input id="finput-zip" type="file" accept=".zip,.rar,.7z,.tar,.gz" multiple style="display:none">
         </label>
       </div>
       <div class="sel-files" id="sfiles"></div>
@@ -1547,7 +1552,8 @@ function createTaskPage() {
       <div class="form-group">
         <label class="form-label">Namuna fayllar (ixtiyoriy)</label>
         <div class="upload-area" id="ct-uarea" style="padding:14px 12px">
-          <input type="file" id="ct-finput" multiple style="display:none">
+          <input type="file" id="ct-finput" multiple style="display:none"
+            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.tar,.gz,.txt,.csv">
           <span class="upload-icon" style="font-size:22px">📎</span>
           <span class="upload-lbl">Namuna fayl biriktirish</span>
           <span class="upload-hint">Hodimlar ko'rishi uchun shablon yoki namuna fayllar</span>
@@ -2652,6 +2658,7 @@ document.addEventListener('change', ev => {
   if (ev.target.id === 'finput')           onFilesPicked(ev.target.files, true);   // asosiy — almashtiradi
   if (ev.target.id === 'finput-cam')       onFilesPicked(ev.target.files, false);  // kamera — qo'shadi
   if (ev.target.id === 'finput-gallery')   onFilesPicked(ev.target.files, false);  // galereya — qo'shadi
+  if (ev.target.id === 'finput-zip')       onFilesPicked(ev.target.files, false);  // arxiv — qo'shadi
 });
 
 document.addEventListener('input', ev => {
