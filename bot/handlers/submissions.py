@@ -42,6 +42,79 @@ _pending_group_album: dict[int, dict] = {}
 # {token: {"file_id": ..., "file_name": ..., "file_kind": ..., "note": ..., "user_id": ..., "msg_id": ...}}
 _pending_group_doc: dict[str, dict] = {}
 
+# ── Smart kalit so'z matching ──────────────────────────────────
+
+_CYR_TO_LAT: dict[str, str] = {
+    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'j',
+    'з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o',
+    'п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'x','ч':'ch',
+    'ш':'sh','щ':'sh','ъ':'','ы':'i','ь':'','э':'e','ю':'yu','я':'ya',
+    'ц':'ts','ў':'u','қ':'q','ғ':'g','ҳ':'h',
+}
+
+_STOPWORDS = frozenset({
+    'bilan','uchun','kerak','yoki','hamda','lekin','qilish','qiladi',
+    'boyin','haqida','uchun','yoqi','emas','yoqo','topshiriq',
+    'fayl','docx','xlsx','jpeg','rasm','tasvir','ilova','rasmli',
+    'hisobot','jadval','yuklash','hujjat','vazifa','keyin','yana',
+    'bugun','sana','vaqt','yillik','oylik','hafta','boshqa',
+})
+
+
+def _transliterate(text: str) -> str:
+    """Kirillcha Oʻzbek → Lotin (soddalashtirilgan). Lotin harflar o'zgarmaydi."""
+    out: list[str] = []
+    for ch in text.lower():
+        out.append(_CYR_TO_LAT.get(ch, ch))
+    return ''.join(out)
+
+
+def _extract_kws(texts: list[str]) -> set[str]:
+    """Matnlar ro'yxatidan transliteratsiya qilingan kalit so'zlar to'plami.
+
+    Hashtag va _ belgilar ajratuvchi sifatida ishlatiladi.
+    Faqat 4+ harfli, stop-so'z bo'lmagan so'zlar saqlanadi.
+    """
+    result: set[str] = set()
+    for text in texts:
+        if not text:
+            continue
+        cleaned = re.sub(r'[#_\-\.]+', ' ', text)
+        words = re.findall(r'[a-zA-ZА-Яа-яЎўҚқҲҳҒғёЁ]{4,}', cleaned)
+        for w in words:
+            lat = _transliterate(w)
+            if len(lat) >= 4 and lat not in _STOPWORDS:
+                result.add(lat)
+    return result
+
+
+def _kw_match(a: str, b: str) -> bool:
+    """Ikki kalit so'z mos keladimi: aniq teng YOKI 5+ harfli umumiy prefiks."""
+    if a == b:
+        return True
+    n = min(len(a), len(b))
+    return n >= 5 and a[:n] == b[:n]
+
+
+def _match_tasks(tasks: list, kws: set[str]) -> list:
+    """Kalit so'zlarga ko'ra topshiriqlarni baholaydi va saralaydi.
+
+    Qaytaradi: mos topshiriqlar kamida 1 ball bilan, ball bo'yicha kamayish tartibida.
+    Aniq moslik + 5+ harfli prefiks mosligini hisobga oladi.
+    """
+    if not kws:
+        return []
+    scored: list[tuple] = []
+    for t in tasks:
+        t_text = re.sub(r'[#_\-\.]+', ' ',
+                        (t['title'] or '') + ' ' + (t['description'] or ''))
+        t_kws = _extract_kws([t_text])
+        score = sum(1 for kw in kws for tkw in t_kws if _kw_match(kw, tkw))
+        if score > 0:
+            scored.append((t, score))
+    scored.sort(key=lambda x: -x[1])
+    return [t for t, _ in scored]
+
 
 def _full_name(user) -> str:
     return (user.full_name or user.first_name or "Nomsiz").strip()
@@ -269,6 +342,44 @@ async def handle_group_submission(
         except Exception:
             pass
         return
+
+    # ── Smart kalit so'z matching ──────────────────────────────
+    # Fayl nomlari + caption + albom captionlari → kalit so'zlar
+    kw_sources: list[str] = [note or ""]
+    for _fid, _fn, _fk in media_files + doc_files:
+        if _fn:
+            kw_sources.append(_fn)
+    if album:
+        for _am in album:
+            _atxt = message_text(_am)
+            if _atxt and _atxt not in kw_sources:
+                kw_sources.append(_atxt)
+
+    kws = _extract_kws(kw_sources)
+    matched = _match_tasks(tasks, kws)
+
+    if len(matched) == 1:
+        # Yagona kalit so'z mos keldi — so'ramasdan avtomatik biriktir
+        task_id = matched[0]["id"]
+        all_files = media_files + doc_files
+        submitted, total = await _record_files(
+            task_id, user.id, all_files, note, message.message_id, db
+        )
+        try:
+            await message.reply(
+                f"🔍 <b>#{task_id}-topshiriq</b> nomi bilan mos keldi — avtomatik biriktirildi.\n"
+                f"✅ {len(all_files)} ta fayl qabul qilindi.\n"
+                f"({submitted}/{total} xodim topshirdi)",
+                disable_notification=True,
+            )
+        except Exception:
+            pass
+        return
+
+    if matched:
+        # Bir nechta mos topshiriq — faqat moslarini tugmalarda ko'rsat
+        tasks = matched
+    # matched bo'lmasa: hamma ochiq topshiriqlar (standart xatti-harakat)
 
     # Bir nechta topshiriq — so'rov tugmalarini yuboramiz
     rows = [
