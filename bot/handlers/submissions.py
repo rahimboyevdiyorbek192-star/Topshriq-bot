@@ -8,9 +8,13 @@ Muammolar va yechimlar:
 """
 from __future__ import annotations
 
+import io
+import logging
 import re
 import uuid
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
@@ -28,6 +32,53 @@ from ..utils.files import extract_file, message_text
 from ..utils.filetext import extract_text_from_bytes
 
 router = Router()
+
+
+async def _try_store_exif(
+    bot: Bot,
+    db: Database,
+    task_id: int,
+    employee_id: int,
+    file_id: str | None,
+    file_name: str | None,
+) -> None:
+    """JPG hujjatdan EXIF ma'lumotini oladi va submissions jadvalini yangilaydi."""
+    if not file_id or not file_name:
+        return
+    if not any(file_name.lower().endswith(ext) for ext in (".jpg", ".jpeg")):
+        return
+    try:
+        from PIL import Image
+        tg_file = await bot.get_file(file_id)
+        bio = await bot.download_file(tg_file.file_path)
+        data = bio.read() if hasattr(bio, "read") else bytes(bio)
+        img = Image.open(io.BytesIO(data))
+        exif_raw = img.getexif()
+        if not exif_raw:
+            return
+        exif_date: str | None = None
+        for tag_id in (36867, 36868, 306):
+            val = exif_raw.get(tag_id)
+            if val:
+                exif_date = str(val)
+                break
+        make  = (exif_raw.get(271) or "").strip()
+        model = (exif_raw.get(272) or "").strip()
+        exif_device: str | None = None
+        if make or model:
+            parts = [x for x in [make, model] if x]
+            if len(parts) == 2 and model.startswith(make):
+                parts = [model]
+            exif_device = " ".join(parts)
+        if exif_date or exif_device:
+            await db.conn.execute(
+                "UPDATE submissions SET exif_date=?, exif_device=? WHERE task_id=? AND employee_id=?",
+                (exif_date, exif_device, task_id, employee_id),
+            )
+            await db.conn.commit()
+    except Exception as exc:
+        logger.debug("EXIF olishda xato (task %s, emp %s): %s", task_id, employee_id, exc)
+
 
 _TASK_TAG = re.compile(
     r"#\s?(?:[tTтТ]\s?)?(\d+)"           # #T3, #t3, #3, # 3
@@ -364,6 +415,8 @@ async def handle_group_submission(
         submitted, total = await _record_files(
             task_id, euid, all_files, note, message.message_id, db
         )
+        for fid, fname, _ in doc_files:
+            await _try_store_exif(bot, db, task_id, euid, fid, fname)
         name_part = f" ({_full_name(effective_user)})" if emp_arg else ""
         try:
             await message.reply(
@@ -420,6 +473,8 @@ async def handle_group_submission(
         submitted, total = await _record_files(
             task_id, euid, all_files, note, message.message_id, db
         )
+        for fid, fname, _ in doc_files:
+            await _try_store_exif(bot, db, task_id, euid, fid, fname)
         name_part = f" ({_full_name(effective_user)})" if emp_arg else ""
         try:
             await message.reply(

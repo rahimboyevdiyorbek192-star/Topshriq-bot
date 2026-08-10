@@ -810,6 +810,19 @@ class Database:
         row = await cur.fetchone()
         return (row["total"] or 0) if row else 0
 
+    async def get_task_file_counts(self, task_id: int) -> dict[int, int]:
+        """task_id bo'yicha har bir xodim yuklagan fayllar sonini qaytaradi."""
+        cur = await self.conn.execute(
+            """SELECT s.employee_id,
+                 (CASE WHEN s.file_id IS NOT NULL OR s.local_path IS NOT NULL THEN 1 ELSE 0 END) +
+                 (SELECT COUNT(*) FROM submission_files sf
+                  WHERE sf.task_id = s.task_id AND sf.employee_id = s.employee_id) AS cnt
+               FROM submissions s WHERE s.task_id = ?""",
+            (task_id,),
+        )
+        rows = await cur.fetchall()
+        return {row["employee_id"]: (row["cnt"] or 0) for row in rows}
+
     async def get_employee_submission_files_meta(
         self, task_id: int, employee_id: int
     ) -> list[dict]:

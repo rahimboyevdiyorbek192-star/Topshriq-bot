@@ -443,9 +443,10 @@ async def handle_task_detail(request: web.Request) -> web.Response:
         if t_sector is not None and t_sector != am_sector:
             return _json({"error": "Ruxsat yo'q"}, 403)
 
-    submissions = await db.get_all_task_submissions(task_id)
-    total_emp   = await db.count_employees(sector=am_sector)
-    task_files  = await db.get_task_files(task_id)
+    submissions  = await db.get_all_task_submissions(task_id)
+    total_emp    = await db.count_employees(sector=am_sector)
+    task_files   = await db.get_task_files(task_id)
+    file_counts  = await db.get_task_file_counts(task_id)
 
     return _json({
         "task": {
@@ -470,6 +471,7 @@ async def handle_task_detail(request: web.Request) -> web.Response:
                 "is_old_photo": _is_old_photo(s["exif_date"], s["submitted_at"] or ""),
                 "submit_lat":   s["submit_lat"],
                 "submit_lon":   s["submit_lon"],
+                "file_count":   file_counts.get(s["employee_id"], 0),
             }
             for s in submissions
         ],
@@ -791,25 +793,26 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
                 except Exception as exc:
                     logger.warning("Namuna fayl Telegram'ga yuborilmadi (%s): %s", fname, exc)
 
-    try:
+    if config.execution_group_ids:
         bot = request.app["bot"]
-        if config.execution_group_id:
-            dl_text = format_deadline(deadline, config.tz) if deadline else "belgilanmagan"
-            sector_tag = f" (Sektor {am_sector})" if am_sector else ""
-            text = (
-                f"📋 <b>Yangi topshiriq #{task_id}{sector_tag}</b>\n"
-                f"📌 {title}\n"
-                f"📅 Muddat: {dl_text}"
-            )
-            if creator_name:
-                text += f"\n👤 {creator_name} (Rahbar Yordamchisi)"
-            if description:
-                text += f"\n📝 {description[:200]}"
-            if required_files:
-                text += f"\n📂 Talab: {required_files} ta fayl"
-            await bot.send_message(config.execution_group_id, text)
-    except Exception as exc:
-        logger.warning("Topshiriq e'lon xato: %s", exc)
+        dl_text = format_deadline(deadline, config.tz) if deadline else "belgilanmagan"
+        sector_tag = f" (Sektor {am_sector})" if am_sector else ""
+        text = (
+            f"📋 <b>Yangi topshiriq #{task_id}{sector_tag}</b>\n"
+            f"📌 {title}\n"
+            f"📅 Muddat: {dl_text}"
+        )
+        if creator_name:
+            text += f"\n👤 {creator_name} (Rahbar Yordamchisi)"
+        if description:
+            text += f"\n📝 {description[:200]}"
+        if required_files:
+            text += f"\n📂 Talab: {required_files} ta fayl"
+        for gid in config.execution_group_ids:
+            try:
+                await bot.send_message(gid, text)
+            except Exception as exc:
+                logger.warning("Topshiriq e'lon xato (chat %s): %s", gid, exc)
 
     return _json({"ok": True, "task_id": task_id})
 
@@ -923,8 +926,7 @@ async def handle_submit(request: web.Request) -> web.Response:
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
     send_chats: list[int] = []
-    if config.execution_group_id:
-        send_chats.append(config.execution_group_id)
+    send_chats.extend(config.execution_group_ids)
     if config.manager_ids:
         send_chats.extend(config.manager_ids)
 
@@ -1539,8 +1541,7 @@ async def handle_my_file_replace(request: web.Request) -> web.Response:
         return _json({"error": "Fayl topilmadi"}, 404)
     # Telegram xabarnomasi fonda
     r_chats: list[int] = []
-    if config.execution_group_id:
-        r_chats.append(config.execution_group_id)
+    r_chats.extend(config.execution_group_ids)
     if config.manager_ids:
         r_chats.extend(config.manager_ids)
     if r_chats:

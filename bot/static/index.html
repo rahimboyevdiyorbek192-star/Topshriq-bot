@@ -1092,6 +1092,7 @@ function mgrDetailPage() {
   } else if (!S.detail.submissions.length) {
     subs = '<p class="text-hint text-sm">Hali hech kim topshirmagan</p>';
   } else {
+    const reqFiles = t.required_files || 0;
     subs = S.detail.submissions.map(s => {
       const exif = exifDateStr(s.exif_date);
       const exifHtml = exif
@@ -1116,13 +1117,19 @@ function mgrDetailPage() {
                     style="color:var(--primary);text-decoration:none">Rasm olingan joy</a>
              </div>`
           : '<div style="font-size:11px;color:var(--warning);margin-top:3px">📍 Joylashuv yo\'q</div>';
+      const fc = s.file_count || 0;
+      const fileCountHtml = reqFiles > 0
+        ? `<div style="font-size:11px;color:${fc >= reqFiles ? '#22c55e' : 'var(--hint)'};margin-top:2px">📎 ${fc}/${reqFiles} fayl yuklangan</div>`
+        : fc > 1
+          ? `<div style="font-size:11px;color:var(--hint);margin-top:2px">📎 ${fc} ta fayl</div>`
+          : '';
       return `
       <div class="sub-item">
         <div class="sub-avatar">${esc(initials(s.full_name))}</div>
         <div class="sub-info">
           <div class="sub-name">${esc(s.full_name)}</div>
           <div class="sub-time">${esc(fmtDate(s.submitted_at))}${s.note ? ' · ' + esc(String(s.note).slice(0,40)) : ''}</div>
-          ${exifHtml}${deviceHtml}${oldHtml}${locHtml}
+          ${fileCountHtml}${exifHtml}${deviceHtml}${oldHtml}${locHtml}
         </div>
         ${s.file_id
           ? `<button class="btn btn-ghost btn-sm" data-act="file" data-fid="${esc(s.file_id)}" data-fname="${esc(s.file_name || 'fayl')}">⬇️</button>`
@@ -1322,8 +1329,23 @@ function _parseJpegExif(buf) {
             if((tag===0x9003||tag===0x9004||tag===0x0132)&&!out.date)out.date=s;
             else if(tag===0x010F)out._mk=s;
             else if(tag===0x0110)out._md=s;
-          } else if(typ===4&&cnt===1&&tag===0x8825) out._gps=dv.getUint32(B+e+8,le);
+          } else if(typ===4&&cnt===1&&tag===0x8769) out._exif=dv.getUint32(B+e+8,le);
+          else if(typ===4&&cnt===1&&tag===0x8825) out._gps=dv.getUint32(B+e+8,le);
         }
+        // EXIF sub-IFD — DateTimeOriginal (0x9003) IFD0 da yo'q bo'lsa shu yerdan o'qiladi
+        if (out._exif !== undefined && !out.date) {
+          var ei=out._exif, en=u16(ei);
+          for (var i=0; i<en&&i<64; i++) {
+            var e2=ei+2+i*12, tag2=u16(e2), typ2=u16(e2+2), cnt2=u32(e2+4);
+            if (typ2===2 && (tag2===0x9003||tag2===0x9004)) {
+              var vp2=B+(cnt2>4?u32(e2+8):e2+8);
+              var s2='';
+              for(var j=0;j<cnt2-1&&j<32;j++){var c2=dv.getUint8(vp2+j);if(!c2)break;s2+=String.fromCharCode(c2);}
+              s2=s2.trim(); if(s2){out.date=s2;break;}
+            }
+          }
+        }
+        delete out._exif;
         if (out._gps!==undefined) {
           var gi=out._gps,gn=u16(gi),latR='N',lonR='E',lat=null,lon=null;
           for(var i=0;i<gn&&i<32;i++){
@@ -1358,8 +1380,7 @@ function _parseJpegExif(buf) {
 
 function readExifFromFile(file) {
   return new Promise(function(resolve) {
-    var nm = (file.name||'').toLowerCase();
-    if(!file.type.includes('jpeg')&&!nm.endsWith('.jpg')&&!nm.endsWith('.jpeg')){resolve(null);return;}
+    // MIME turini tekshirmaymiz — _parseJpegExif magic bytes (0xFFD8) orqali o'zi hal qiladi
     var fr = new FileReader();
     fr.onload = function(e){try{resolve(_parseJpegExif(e.target.result));}catch(_){resolve(null);}};
     fr.onerror = function(){resolve(null);};

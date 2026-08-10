@@ -7,9 +7,12 @@ Qoidalar:
 """
 from __future__ import annotations
 
+import logging
 import re
 import time
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from aiogram import Bot, F, Router
 from aiogram.filters import BaseFilter, Command, CommandObject
@@ -176,8 +179,8 @@ async def _do_create_task(
 
     tail = (
         "Ijro guruhiga e'lon yuborildi."
-        if config.execution_group_id
-        else "⚠️ Ijro guruhi (EXECUTION_GROUP_ID) sozlanmagan."
+        if config.execution_group_ids
+        else "⚠️ Ijro guruhi (EXECUTION_GROUP_IDS) sozlanmagan."
     )
     try:
         await message.reply(
@@ -189,7 +192,7 @@ async def _do_create_task(
     except Exception:
         pass
 
-    if config.execution_group_id:
+    if config.execution_group_ids:
         await _announce_task(bot, config, db, task_id, title, body, deadline_iso, files)
 
 
@@ -355,7 +358,8 @@ async def _announce_task(
                     sent_msg = await bot.send_message(gid, caption)
             else:
                 sent_msg = await bot.send_message(gid, caption)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Guruh e'lon xato (task %s, chat %s): %s", task_id, gid, exc)
             sent_msg = None
         if sent_msg and announce_msg is None:
             announce_msg = sent_msg  # Faqat birinchi guruh xabari saqlanadi
@@ -501,3 +505,22 @@ async def cmd_close_task(
         return
     await db.close_task(task_id)
     await message.reply(f"🔒 Topshiriq #{task_id} yopildi.")
+
+
+@router.message(Command("guruhtest"))
+async def cmd_test_groups(
+    message: Message, bot: Bot, config: Config
+) -> None:
+    if not (message.from_user and config.is_manager(message.from_user.id)):
+        return
+    if not config.execution_group_ids:
+        await message.reply("⚠️ Hech qanday ijro guruhi sozlanmagan.")
+        return
+    lines = [f"🔍 Guruhlarni tekshirish ({len(config.execution_group_ids)} ta):"]
+    for gid in config.execution_group_ids:
+        try:
+            await bot.send_message(gid, "🔧 Guruh testi — bot ishlayapti.")
+            lines.append(f"✅ <code>{gid}</code> — muvaffaqiyatli")
+        except Exception as exc:
+            lines.append(f"❌ <code>{gid}</code> — xato: {exc}")
+    await message.reply("\n".join(lines))
