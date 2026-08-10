@@ -1132,8 +1132,10 @@ function mgrDetailPage() {
           ${fileCountHtml}${exifHtml}${deviceHtml}${oldHtml}${locHtml}
         </div>
         ${s.file_id
-          ? `<button class="btn btn-ghost btn-sm" data-act="file" data-fid="${esc(s.file_id)}" data-fname="${esc(s.file_name || 'fayl')}">⬇️</button>`
-          : '<span class="badge badge-wait">Faqat izoh</span>'}
+          ? `<button class="btn btn-ghost btn-sm" data-act="file" data-fid="${esc(s.file_id)}" data-fname="${esc(s.file_name || '')}">⬇️</button>`
+          : s.has_local_file
+            ? `<button class="btn btn-ghost btn-sm" data-act="sub-dl" data-tid="${S.activeTask.id}" data-eid="${s.employee_id}">⬇️</button>`
+            : '<span class="badge badge-wait">Faqat izoh</span>'}
       </div>`;
     }).join('');
   }
@@ -1525,7 +1527,13 @@ function partialUploadOverlay(myCount, req) {
 
 /* Fayl nomi ?name= orqali uzatiladi — aks holda "file_12.docx" bo'lib tushadi */
 function dlFile(fileId, name) {
-  openUrl(`/api/file/${encodeURIComponent(fileId)}?${authQuery()}&name=${encodeURIComponent(name || 'fayl')}`);
+  // Nom bo'sh bo'lsa server Telegram fayl yo'lidan o'zi aniqlaydi
+  const np = name && name !== 'fayl' ? `&name=${encodeURIComponent(name)}` : '';
+  openUrl(`/api/file/${encodeURIComponent(fileId)}?${authQuery()}${np}`);
+}
+
+function dlSubFile(taskId, employeeId) {
+  openUrl(`/api/mgr/sub-dl/${taskId}/${employeeId}?${authQuery()}`);
 }
 
 function dlMyFile(tid, rtype, rid, fname) {
@@ -2723,6 +2731,7 @@ document.addEventListener('click', ev => {
     case 'page':        gotoPage(d.page); break;
     case 'task':        openTask(parseInt(d.id, 10)); break;
     case 'file':        dlFile(d.fid, d.fname); break;
+    case 'sub-dl':      dlSubFile(d.tid, d.eid); break;
     case 'zip':         dlZip(parseInt(d.id, 10)); break;
     case 'rmfile':      removeFile(parseInt(d.i, 10)); break;
     case 'ctfile-rm':  { S.ctFiles = (S.ctFiles||[]).filter((_,ii)=>ii!==parseInt(d.i,10)); renderCtFiles(); break; }

@@ -481,7 +481,8 @@ async def handle_task_detail(request: web.Request) -> web.Response:
                 "is_old_photo": _is_old_photo(s["exif_date"], s["submitted_at"] or ""),
                 "submit_lat":   s["submit_lat"],
                 "submit_lon":   s["submit_lon"],
-                "file_count":   file_counts.get(s["employee_id"], 0),
+                "file_count":      file_counts.get(s["employee_id"], 0),
+                "has_local_file":  bool(s["local_path"]),
             }
             for s in submissions
         ],
@@ -492,6 +493,58 @@ async def handle_task_detail(request: web.Request) -> web.Response:
             for f in task_files
         ],
     })
+
+
+async def handle_mgr_sub_download(request: web.Request) -> web.Response:
+    """Rahbar uchun: bitta xodimning topshiriq fayllarini yuklab olish."""
+    user, is_mgr, _ = await _get_mgr_level(request)
+    if not user:
+        return web.Response(status=401)
+    if not is_mgr:
+        return web.Response(status=403)
+
+    task_id     = int(request.match_info.get("task_id", "0"))
+    employee_id = int(request.match_info.get("employee_id", "0"))
+    db: Database = request.app["db"]
+
+    files_meta = await db.get_employee_submission_files_meta(task_id, employee_id)
+    if not files_meta:
+        return web.Response(status=404)
+
+    if len(files_meta) == 1:
+        info = await db.get_submission_file_local(
+            files_meta[0]["rec_type"], files_meta[0]["rec_id"], employee_id
+        )
+        if not info or not info["local_path"]:
+            return web.Response(status=404)
+        p = Path(info["local_path"])
+        if not p.exists():
+            return web.Response(status=404)
+        fname = _safe_filename(info["file_name"] or p.name)
+        return _cors(web.Response(
+            body=p.read_bytes(),
+            content_type="application/octet-stream",
+            headers={"Content-Disposition": _content_disposition(fname)},
+        ))
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for m in files_meta:
+            info = await db.get_submission_file_local(m["rec_type"], m["rec_id"], employee_id)
+            if not info or not info["local_path"]:
+                continue
+            p = Path(info["local_path"])
+            if not p.exists():
+                continue
+            zf.writestr(_safe_filename(info["file_name"] or p.name), p.read_bytes())
+    buf.seek(0)
+    return _cors(web.Response(
+        body=buf.read(),
+        content_type="application/zip",
+        headers={"Content-Disposition": _content_disposition(
+            f"topshiriq_{task_id}_xodim_{employee_id}.zip"
+        )},
+    ))
 
 
 async def handle_task_zip(request: web.Request) -> web.Response:
@@ -1056,10 +1109,9 @@ async def handle_file_proxy(request: web.Request) -> web.Response:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.get(file_url)
             r.raise_for_status()
-        fname = _safe_filename(
-            request.rel_url.query.get("name", "")
-            or (tg_file.file_path.split("/")[-1] if tg_file.file_path else "fayl")
-        )
+        name_q = request.rel_url.query.get("name", "").strip()
+        tg_fname = tg_file.file_path.split("/")[-1] if tg_file.file_path else "fayl"
+        fname = _safe_filename(name_q or tg_fname)
         ctype = r.headers.get("content-type", "application/octet-stream")
         return _cors(web.Response(
             body=r.content, content_type=ctype,
@@ -1613,6 +1665,7 @@ def create_webapp(config: Config, db: Database, bot) -> web.Application:
     app.router.add_get("/api/tasks/history",          handle_history)           # static — {task_id}'dan oldin
     app.router.add_get("/api/tasks/{task_id}/detail",    handle_task_detail)
     app.router.add_get("/api/tasks/{task_id}/zip",       handle_task_zip)
+    app.router.add_get("/api/mgr/sub-dl/{task_id}/{employee_id}", handle_mgr_sub_download)
     app.router.add_patch("/api/tasks/{task_id}/deadline", handle_task_deadline_update)
     app.router.add_delete("/api/tasks/{task_id}",        handle_task_delete)
     app.router.add_post("/api/submit",                handle_submit)
