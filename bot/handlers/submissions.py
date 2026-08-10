@@ -28,7 +28,11 @@ from ..utils.files import extract_file, message_text
 
 router = Router()
 
-_TASK_TAG = re.compile(r"#\s?[tTтТ]\s?(\d+)")
+_TASK_TAG = re.compile(
+    r"#\s?(?:[tTтТ]\s?)?(\d+)"           # #T3, #t3, #3, # 3
+    r"|(?:topshiriq|vazifa)\s*#?\s*(\d+)", # "topshiriq #3" yoki "topshiriq 3"
+    re.IGNORECASE,
+)
 
 # DM topshirish: fayl kutilmoqda
 # {user_id: {"file_id": ..., "file_name": ..., "note": ..., "msg_id": ...}}
@@ -127,7 +131,7 @@ async def _resolve_task_id(message: Message, db: Database) -> int | None:
             return task["id"]
     m = _TASK_TAG.search(message_text(message))
     if m:
-        task_id = int(m.group(1))
+        task_id = int(m.group(1) or m.group(2))
         task    = await db.get_task(task_id)
         if task:
             return task_id
