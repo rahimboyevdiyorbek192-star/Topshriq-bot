@@ -1028,7 +1028,6 @@ async function openTask(id) {
     if (!d || d.error) return;
     if (S.page !== 'task-detail' || !S.activeTask || S.activeTask.id !== id) return;
     S.detail = d;
-    // AM ham o'z fayllarini ko'rishi/yuklashi uchun
     if (S.amSector !== null) {
       const mf = await api(`/api/my-files/${id}`);
       if (mf && !mf.error) S.myFiles = mf.files || [];
@@ -1073,11 +1072,13 @@ function taskHeaderHtml(t, extra) {
 
 const backBtnHtml = '<div><button class="btn btn-ghost btn-sm" data-act="page" data-page="tasks">← Orqaga</button></div>';
 
-/* ── Rahbar yordamchisi uchun o'z topshiriqni yuklash qismi ─ */
-function amSubmitSection(t) {
+/* ── Rahbar yordamchisi: o'z topshirish qismi ───────────── */
+function amSubmitSection() {
   if (S.amSector === null) return '';
+  const t   = S.activeTask;
   const req = t.required_files || 0;
   const myCount = t.my_file_count || 0;
+
   let progressHtml = '';
   if (req > 0) {
     const fp = Math.min(100, Math.round(myCount / req * 100));
@@ -1085,26 +1086,23 @@ function amSubmitSection(t) {
     progressHtml = `
     <div class="sec-card" style="margin-bottom:0">
       <div class="flex items-center justify-between" style="margin-bottom:6px">
-        <span style="font-size:13px;font-weight:600">📂 Fayl talabi</span>
+        <span style="font-size:13px;font-weight:600">📂 Mening fayl talabim</span>
         <span style="font-size:13px;color:${myCount>=req?'var(--success)':'var(--warning)'};font-weight:700">${myCount}/${req}</span>
       </div>
       <div class="prog-bar"><div class="prog-fill ${fpCls}" style="width:${fp}%"></div></div>
-      <div class="form-hint" style="margin-top:4px">${myCount>=req?'✅ Yetarli fayl yuklandi':'Yana '+(req-myCount)+' ta fayl yuklang'}</div>
     </div>`;
   }
+
   const banner = t.submitted_by_me ? `
     <div class="submitted-banner">
       <span class="sb-icon">✅</span>
-      <div>
-        <div class="sb-lbl">Topshirildi!</div>
-        ${t.my_submission && t.my_submission.file_name
-          ? `<div class="sb-sub">📎 ${esc(t.my_submission.file_name)}</div>` : ''}
-      </div>
+      <div><div class="sb-lbl">Topshirildi!</div></div>
     </div>
-    <div class="resubmit-note">Qayta yuborish uchun yangi fayl tanlang yoki izohni yangilang</div>` : '';
+    <div class="resubmit-note">Qayta yuborish uchun yangi fayl tanlang</div>` : '';
+
   const myFilesHtml = S.myFiles && S.myFiles.length ? `
     <div class="sec-card">
-      <div class="sec-title">📂 Yuklagan fayllarim</div>
+      <div class="sec-title">📂 Mening fayllarim</div>
       ${S.myFiles.map(f => `
         <div class="my-file-row">
           <span class="fi-icon">${fileIcon(f.file_name, '')}</span>
@@ -1119,38 +1117,39 @@ function amSubmitSection(t) {
           </div>
         </div>`).join('')}
     </div>` : '';
+
   return `
   <hr style="border:none;border-top:2px dashed var(--border);margin:8px 0">
-  <div class="sec-card" style="background:var(--primary-bg);border:1px solid var(--primary)">
-    <div class="sec-title" style="color:var(--primary)">📤 O'zim topshirish</div>
-    <p style="font-size:12px;color:var(--hint);margin:0">Rahbar yordamchisi sifatida o'z faylingizni ham yuklashingiz mumkin</p>
-  </div>
   ${progressHtml}
   ${myFilesHtml}
-  <div class="sec-card">
-    <div class="sec-title">📤 Mening topshiriqim</div>
+  <div class="sec-card" style="background:var(--primary-lt);border:1px solid var(--primary)">
+    <div class="sec-title" style="color:var(--primary)">📤 Rahbar yordamchisi topshirig'i</div>
+    <p style="font-size:12px;color:var(--hint);margin:0 0 8px">Rahbar yordamchisi sifatida o'z faylingizni ham yuklashingiz mumkin</p>
     ${banner}
     <div class="upload-area" id="uarea">
       <input type="file" id="finput" multiple
         accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.tar,.gz,.txt,.csv">
       <span class="upload-icon">📁</span>
       <span class="upload-lbl">Fayl yoki rasm tanlang</span>
-      <span class="upload-hint">Rasm, Word, Excel, PDF, ZIP/RAR · Bir nechta mumkin · Maks 50 MB</span>
+      <span class="upload-hint">Rasm, Word, Excel, PDF, ZIP/RAR arxiv · Bir nechta mumkin · Maks 50 MB</span>
     </div>
     <div style="margin-top:6px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
       <label class="btn btn-ghost btn-sm" style="cursor:pointer">
-        📷 Kamera<input id="finput-cam" type="file" accept="image/jpeg,image/png" capture="camera" style="display:none">
+        📷 Kamera
+        <input id="finput-cam" type="file" accept="image/jpeg,image/png" capture="camera" style="display:none">
       </label>
       <label class="btn btn-ghost btn-sm" style="cursor:pointer">
-        🖼️ Galereya<input id="finput-gallery" type="file" accept="image/*" multiple style="display:none">
+        🖼️ Galereya
+        <input id="finput-gallery" type="file" accept="image/*" multiple style="display:none">
       </label>
       <label class="btn btn-ghost btn-sm" style="cursor:pointer">
-        🗜️ Arxiv<input id="finput-zip" type="file" accept=".zip,.rar,.7z,.tar,.gz" multiple style="display:none">
+        🗜️ Arxiv
+        <input id="finput-zip" type="file" accept=".zip,.rar,.7z,.tar,.gz" multiple style="display:none">
       </label>
     </div>
     <div class="sel-files" id="sfiles"></div>
     <textarea class="note-area" id="narea" rows="3"
-              placeholder="Izoh yozing (fayl bo'lmasa ham izoh bilan topshirish mumkin)…"></textarea>
+              placeholder="Izoh yozing…"></textarea>
   </div>
   <div class="submit-bar">
     <button class="btn btn-primary btn-full" id="subbtn" data-act="submit" disabled>
@@ -1222,11 +1221,9 @@ function mgrDetailPage() {
           <div class="sub-time">${esc(fmtDate(s.submitted_at))}${s.note ? ' · ' + esc(String(s.note).slice(0,40)) : ''}</div>
           ${fileCountHtml}${exifHtml}${deviceHtml}${oldHtml}${locHtml}
         </div>
-        ${s.file_id
-          ? `<button class="btn btn-ghost btn-sm" data-act="file" data-fid="${esc(s.file_id)}" data-fname="${esc(s.file_name || '')}">⬇️</button>`
-          : s.has_local_file
-            ? `<button class="btn btn-ghost btn-sm" data-act="sub-dl" data-tid="${S.activeTask.id}" data-eid="${s.employee_id}">⬇️</button>`
-            : '<span class="badge badge-wait">Faqat izoh</span>'}
+        ${(s.file_id || s.has_local_file)
+          ? `<a class="btn btn-ghost btn-sm" href="/api/mgr/sub-dl/${t.id}/${s.employee_id}?${authQuery()}" download>⬇️</a>`
+          : '<span class="badge badge-wait">Faqat izoh</span>'}
       </div>`;
     }).join('');
   }
@@ -1268,7 +1265,7 @@ function mgrDetailPage() {
       <div class="sec-title">✅ Topshirganlar (${done}/${total})</div>
       ${subs}
     </div>
-    ${amSubmitSection(t)}
+    ${S.amSector !== null ? amSubmitSection() : ''}
   </div>
   <div id="dl-modal"></div>`;
 }
@@ -1619,13 +1616,7 @@ function partialUploadOverlay(myCount, req) {
 
 /* Fayl nomi ?name= orqali uzatiladi — aks holda "file_12.docx" bo'lib tushadi */
 function dlFile(fileId, name) {
-  // Nom bo'sh bo'lsa server Telegram fayl yo'lidan o'zi aniqlaydi
-  const np = name && name !== 'fayl' ? `&name=${encodeURIComponent(name)}` : '';
-  openUrl(`/api/file/${encodeURIComponent(fileId)}?${authQuery()}${np}`);
-}
-
-function dlSubFile(taskId, employeeId) {
-  openUrl(`/api/mgr/sub-dl/${taskId}/${employeeId}?${authQuery()}`);
+  openUrl(`/api/file/${encodeURIComponent(fileId)}?${authQuery()}&name=${encodeURIComponent(name || 'fayl')}`);
 }
 
 function dlMyFile(tid, rtype, rid, fname) {
@@ -2823,7 +2814,6 @@ document.addEventListener('click', ev => {
     case 'page':        gotoPage(d.page); break;
     case 'task':        openTask(parseInt(d.id, 10)); break;
     case 'file':        dlFile(d.fid, d.fname); break;
-    case 'sub-dl':      dlSubFile(d.tid, d.eid); break;
     case 'zip':         dlZip(parseInt(d.id, 10)); break;
     case 'rmfile':      removeFile(parseInt(d.i, 10)); break;
     case 'ctfile-rm':  { S.ctFiles = (S.ctFiles||[]).filter((_,ii)=>ii!==parseInt(d.i,10)); renderCtFiles(); break; }

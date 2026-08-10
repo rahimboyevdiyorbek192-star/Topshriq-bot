@@ -398,8 +398,7 @@ async def handle_tasks(request: web.Request) -> web.Response:
         task_files     = await db.get_task_files(t["id"])
         my_sub         = await db.get_submission(t["id"], user_id)
         req_files      = t["required_files"] if "required_files" in t.keys() else 0
-        # AM ham o'z topshiriq holatini ko'rishi kerak (user_id real tg_id)
-        can_submit = not is_manager or am_sector is not None
+        can_submit     = not is_manager or am_sector is not None
         my_file_count  = await db.count_employee_total_files(t["id"], user_id) if can_submit else 0
         submitted_me   = (
             can_submit and user_id in submitted_ids and (req_files == 0 or my_file_count >= req_files)
@@ -455,30 +454,10 @@ async def handle_task_detail(request: web.Request) -> web.Response:
         if t_sector is not None and t_sector != am_sector:
             return _json({"error": "Ruxsat yo'q"}, 403)
 
-    submissions  = [dict(r) for r in await db.get_all_task_submissions(task_id)]
+    submissions  = await db.get_all_task_submissions(task_id)
     total_emp    = await db.count_employees(sector=am_sector)
     task_files   = await db.get_task_files(task_id)
     file_counts  = await db.get_task_file_counts(task_id)
-
-    # Retroaktiv EXIF: eski topshiriqlar uchun disk fayldan EXIF o'qib bazaga yozamiz
-    for s in submissions:
-        if not s.get("exif_date") and s.get("local_path"):
-            lp = Path(s["local_path"])
-            if lp.exists():
-                try:
-                    exif_d, exif_dev, exif_g = _extract_exif_info(lp.read_bytes(), lp.name)
-                    if exif_d or exif_dev or exif_g:
-                        await db.conn.execute(
-                            "UPDATE submissions SET exif_date=?, exif_device=?, exif_gps=?"
-                            " WHERE task_id=? AND employee_id=?",
-                            (exif_d, exif_dev, exif_g, s["task_id"], s["employee_id"]),
-                        )
-                        await db.conn.commit()
-                        s["exif_date"] = exif_d
-                        s["exif_device"] = exif_dev
-                        s["exif_gps"] = exif_g
-                except Exception:
-                    pass
 
     return _json({
         "task": {
@@ -497,14 +476,14 @@ async def handle_task_detail(request: web.Request) -> web.Response:
                 "file_name":    s["file_name"],
                 "note":         s["note"],
                 "submitted_at": s["submitted_at"],
-                "exif_date":    s["exif_date"],
-                "exif_device":  s["exif_device"],
-                "exif_gps":     s["exif_gps"],
-                "is_old_photo": _is_old_photo(s["exif_date"], s["submitted_at"] or ""),
-                "submit_lat":   s["submit_lat"],
-                "submit_lon":   s["submit_lon"],
-                "file_count":      file_counts.get(s["employee_id"], 0),
-                "has_local_file":  bool(s["local_path"]),
+                "exif_date":     s["exif_date"],
+                "exif_device":   s["exif_device"],
+                "exif_gps":      s["exif_gps"],
+                "is_old_photo":  _is_old_photo(s["exif_date"], s["submitted_at"] or ""),
+                "submit_lat":    s["submit_lat"],
+                "submit_lon":    s["submit_lon"],
+                "file_count":    file_counts.get(s["employee_id"], 0),
+                "has_local_file": bool(s["local_path"] if "local_path" in s.keys() else None),
             }
             for s in submissions
         ],
@@ -515,58 +494,6 @@ async def handle_task_detail(request: web.Request) -> web.Response:
             for f in task_files
         ],
     })
-
-
-async def handle_mgr_sub_download(request: web.Request) -> web.Response:
-    """Rahbar uchun: bitta xodimning topshiriq fayllarini yuklab olish."""
-    user, is_mgr, _ = await _get_mgr_level(request)
-    if not user:
-        return web.Response(status=401)
-    if not is_mgr:
-        return web.Response(status=403)
-
-    task_id     = int(request.match_info.get("task_id", "0"))
-    employee_id = int(request.match_info.get("employee_id", "0"))
-    db: Database = request.app["db"]
-
-    files_meta = await db.get_employee_submission_files_meta(task_id, employee_id)
-    if not files_meta:
-        return web.Response(status=404)
-
-    if len(files_meta) == 1:
-        info = await db.get_submission_file_local(
-            files_meta[0]["rec_type"], files_meta[0]["rec_id"], employee_id
-        )
-        if not info or not info["local_path"]:
-            return web.Response(status=404)
-        p = Path(info["local_path"])
-        if not p.exists():
-            return web.Response(status=404)
-        fname = _safe_filename(info["file_name"] or p.name)
-        return _cors(web.Response(
-            body=p.read_bytes(),
-            content_type="application/octet-stream",
-            headers={"Content-Disposition": _content_disposition(fname)},
-        ))
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for m in files_meta:
-            info = await db.get_submission_file_local(m["rec_type"], m["rec_id"], employee_id)
-            if not info or not info["local_path"]:
-                continue
-            p = Path(info["local_path"])
-            if not p.exists():
-                continue
-            zf.writestr(_safe_filename(info["file_name"] or p.name), p.read_bytes())
-    buf.seek(0)
-    return _cors(web.Response(
-        body=buf.read(),
-        content_type="application/zip",
-        headers={"Content-Disposition": _content_disposition(
-            f"topshiriq_{task_id}_xodim_{employee_id}.zip"
-        )},
-    ))
 
 
 async def handle_task_zip(request: web.Request) -> web.Response:
@@ -673,6 +600,88 @@ async def handle_task_zip(request: web.Request) -> web.Response:
         content_type="application/zip",
         headers={"Content-Disposition": _content_disposition(f"topshiriq_{task_id}_{safe}.zip")},
     ))
+
+
+async def handle_mgr_sub_download(request: web.Request) -> web.Response:
+    """Rahbar uchun: xodimning barcha fayllarini yuklash (1 fayl yoki ZIP)."""
+    user, is_mgr, am_sector = await _get_mgr_level(request)
+    if not user:
+        return web.Response(status=401)
+    if not is_mgr:
+        return web.Response(status=403)
+
+    task_id = int(request.match_info.get("task_id", "0"))
+    emp_id  = int(request.match_info.get("employee_id", "0"))
+    db: Database   = request.app["db"]
+    bot            = request.app["bot"]
+    config: Config = request.app["config"]
+
+    if am_sector is not None:
+        task = await db.get_task(task_id)
+        if task:
+            t_sector = task["target_sector"] if "target_sector" in task.keys() else None
+            if t_sector is not None and t_sector != am_sector:
+                return web.Response(status=403)
+
+    sub    = await db.get_submission(task_id, emp_id)
+    extras = await db.get_all_submission_files_for_task(task_id)
+    extras = [e for e in extras if e["employee_id"] == emp_id]
+
+    files_to_dl: list[tuple[str | None, str | None, str]] = []
+    if sub:
+        lp = sub["local_path"] if "local_path" in sub.keys() else None
+        if lp or sub["file_id"]:
+            files_to_dl.append((lp, sub["file_id"], sub["file_name"] or "fayl"))
+    for ef in extras:
+        lp = ef["local_path"] if "local_path" in ef.keys() else None
+        if lp or ef["file_id"]:
+            files_to_dl.append((lp, ef["file_id"], ef["file_name"] or "fayl"))
+
+    if not files_to_dl:
+        return web.Response(status=404)
+
+    async def _get_bytes(lp, fid, fn, client):
+        if lp:
+            p = Path(lp)
+            if p.exists():
+                return p.read_bytes(), _safe_filename(fn or p.name)
+        if fid:
+            try:
+                tg_file = await bot.get_file(fid)
+                url = f"https://api.telegram.org/file/bot{config.bot_token}/{tg_file.file_path}"
+                r = await client.get(url)
+                r.raise_for_status()
+                fname = _safe_filename(fn or (tg_file.file_path or "").split("/")[-1])
+                return r.content, fname
+            except Exception as exc:
+                logger.warning("Fayl yuklanmadi %s: %s", fid, exc)
+        return None, _safe_filename(fn)
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        if len(files_to_dl) == 1:
+            lp, fid, fn = files_to_dl[0]
+            data, fname = await _get_bytes(lp, fid, fn, client)
+            if not data:
+                return web.Response(status=404)
+            return _cors(web.Response(
+                body=data,
+                content_type="application/octet-stream",
+                headers={"Content-Disposition": _content_disposition(fname)},
+            ))
+        else:
+            buf  = io.BytesIO()
+            used: set[str] = set()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for lp, fid, fn in files_to_dl:
+                    data, fname = await _get_bytes(lp, fid, fn, client)
+                    if data:
+                        zf.writestr(_unique_arcname("fayllar", fname, used), data)
+            buf.seek(0)
+            return _cors(web.Response(
+                body=buf.getvalue(),
+                content_type="application/zip",
+                headers={"Content-Disposition": _content_disposition(f"topshiriq_{task_id}_{emp_id}.zip")},
+            ))
 
 
 # ── Topshiriq tarixi (barcha, ochiq + yopilgan) ────────────
@@ -1129,9 +1138,10 @@ async def handle_file_proxy(request: web.Request) -> web.Response:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.get(file_url)
             r.raise_for_status()
-        name_q = request.rel_url.query.get("name", "").strip()
-        tg_fname = tg_file.file_path.split("/")[-1] if tg_file.file_path else "fayl"
-        fname = _safe_filename(name_q or tg_fname)
+        fname = _safe_filename(
+            request.rel_url.query.get("name", "")
+            or (tg_file.file_path.split("/")[-1] if tg_file.file_path else "fayl")
+        )
         ctype = r.headers.get("content-type", "application/octet-stream")
         return _cors(web.Response(
             body=r.content, content_type=ctype,
@@ -1684,8 +1694,8 @@ def create_webapp(config: Config, db: Database, bot) -> web.Application:
     app.router.add_post("/api/tasks",                 handle_tasks_create)
     app.router.add_get("/api/tasks/history",          handle_history)           # static — {task_id}'dan oldin
     app.router.add_get("/api/tasks/{task_id}/detail",    handle_task_detail)
-    app.router.add_get("/api/tasks/{task_id}/zip",       handle_task_zip)
-    app.router.add_get("/api/mgr/sub-dl/{task_id}/{employee_id}", handle_mgr_sub_download)
+    app.router.add_get("/api/tasks/{task_id}/zip",                       handle_task_zip)
+    app.router.add_get("/api/mgr/sub-dl/{task_id}/{employee_id}",       handle_mgr_sub_download)
     app.router.add_patch("/api/tasks/{task_id}/deadline", handle_task_deadline_update)
     app.router.add_delete("/api/tasks/{task_id}",        handle_task_delete)
     app.router.add_post("/api/submit",                handle_submit)
