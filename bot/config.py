@@ -39,7 +39,7 @@ class Config:
     bot_token: str
     manager_ids: list[int]
     tasks_group_id: int | None
-    execution_group_id: int | None
+    execution_group_ids: list[int]         # Bir yoki bir nechta ijro guruhi
     tasks_channel_id: int | None          # Alohida kanal (ixtiyoriy)
     timezone_name: str
     db_path: str
@@ -66,6 +66,11 @@ class Config:
     webapp_port: int = 8080
     webapp_manager_phone: str = ""    # Rahbar web login uchun telefon
     webapp_manager_password: str = "" # Rahbar web login uchun parol
+
+    @property
+    def execution_group_id(self) -> int | None:
+        """Birinchi ijro guruhi (orqaga mos uchun)."""
+        return self.execution_group_ids[0] if self.execution_group_ids else None
 
     @property
     def ai_enabled(self) -> bool:
@@ -115,7 +120,10 @@ def load_config() -> Config:
         bot_token=token,
         manager_ids=_parse_ids(os.getenv("MANAGER_IDS")),
         tasks_group_id=_parse_int(os.getenv("TASKS_GROUP_ID")),
-        execution_group_id=_parse_int(os.getenv("EXECUTION_GROUP_ID")),
+        execution_group_ids=(
+            _parse_ids(os.getenv("EXECUTION_GROUP_IDS"))
+            or ([v] if (v := _parse_int(os.getenv("EXECUTION_GROUP_ID"))) else [])
+        ),
         tasks_channel_id=_parse_int(os.getenv("TASKS_CHANNEL_ID")),
         timezone_name=os.getenv("TIMEZONE", "Asia/Tashkent"),
         db_path=os.getenv("DB_PATH", "topshriq.db"),

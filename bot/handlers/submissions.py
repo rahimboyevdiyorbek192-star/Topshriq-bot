@@ -273,8 +273,8 @@ async def handle_group_submission(
             effective_user = origin_user
 
     # ── Guruh filtri ──────────────────────────────────────────────
-    if config.execution_group_id is not None:
-        if message.chat.id != config.execution_group_id:
+    if config.execution_group_ids:
+        if message.chat.id not in config.execution_group_ids:
             return
     else:
         if config.tasks_channel_id and message.chat.id == config.tasks_channel_id:

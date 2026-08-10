@@ -334,27 +334,31 @@ async def _announce_task(
     )
 
     announce_msg = None
-    if len(files) == 1 and files[0][2] == "document":
-        announce_msg = await bot.send_document(
-            config.execution_group_id, files[0][0], caption=caption
-        )
-    elif files:
-        media = []
-        first = True
-        for fid, _fname, kind in files:
-            cap = caption if first else None
-            if kind == "photo":
-                media.append(InputMediaPhoto(media=fid, caption=cap))
-            else:
-                media.append(InputMediaDocument(media=fid, caption=cap))
-            first = False
+    for gid in config.execution_group_ids:
         try:
-            sent         = await bot.send_media_group(config.execution_group_id, media)
-            announce_msg = sent[0] if sent else None
+            if len(files) == 1 and files[0][2] == "document":
+                sent_msg = await bot.send_document(gid, files[0][0], caption=caption)
+            elif files:
+                media = []
+                first = True
+                for fid, _fname, kind in files:
+                    cap = caption if first else None
+                    if kind == "photo":
+                        media.append(InputMediaPhoto(media=fid, caption=cap))
+                    else:
+                        media.append(InputMediaDocument(media=fid, caption=cap))
+                    first = False
+                try:
+                    sent_list = await bot.send_media_group(gid, media)
+                    sent_msg  = sent_list[0] if sent_list else None
+                except Exception:
+                    sent_msg = await bot.send_message(gid, caption)
+            else:
+                sent_msg = await bot.send_message(gid, caption)
         except Exception:
-            announce_msg = await bot.send_message(config.execution_group_id, caption)
-    else:
-        announce_msg = await bot.send_message(config.execution_group_id, caption)
+            sent_msg = None
+        if sent_msg and announce_msg is None:
+            announce_msg = sent_msg  # Faqat birinchi guruh xabari saqlanadi
 
     if announce_msg:
         await db.set_announce_msg(task_id, announce_msg.message_id)
@@ -398,12 +402,92 @@ async def cmd_list_tasks(
     await message.reply("\n".join(lines))
 
 
+async def _is_authorized(user_id: int, config: Config, db: Database) -> bool:
+    """Rahbar yoki rahbar yordamchisi."""
+    if config.is_manager(user_id):
+        return True
+    emp = await db.get_employee(user_id)
+    return bool(emp and emp["is_assistant_manager"])
+
+
+@router.message(Command("muddat", "deadline"))
+async def cmd_edit_deadline(
+    message: Message, command: CommandObject, db: Database, config: Config, bot: Bot
+) -> None:
+    user = message.from_user
+    if not user or not await _is_authorized(user.id, config, db):
+        await message.reply("⛔️ Bu komanda faqat rahbar va rahbar yordamchisi uchun.")
+        return
+
+    args = (command.args or "").strip()
+    if not args:
+        await message.reply(
+            "ℹ️ Foydalanish:\n"
+            "<code>/muddat &lt;raqam&gt; &lt;yangi_muddat&gt;</code>\n\n"
+            "Masalan:\n"
+            "<code>/muddat 3 15.08.2026 18:00</code>\n"
+            "<code>/muddat 3 ertaga soat 17</code>"
+        )
+        return
+
+    parts = args.split(None, 1)
+    if not parts[0].isdigit():
+        await message.reply("⚠️ Birinchi argument topshiriq raqami bo'lishi kerak.")
+        return
+
+    task_id   = int(parts[0])
+    date_str  = parts[1].strip() if len(parts) > 1 else ""
+
+    task = await db.get_task(task_id)
+    if not task:
+        await message.reply(f"⚠️ #{task_id} topshiriq topilmadi.")
+        return
+    if task["status"] != "open":
+        await message.reply(f"⚠️ #{task_id} topshiriq yopilgan.")
+        return
+
+    if not date_str:
+        await message.reply(
+            f"📋 <b>#{task_id}</b> — {task['title']}\n"
+            f"🗓 Hozirgi muddat: {format_deadline(task['deadline'], config.tz)}\n\n"
+            "Yangi muddatni kiriting:\n"
+            f"<code>/muddat {task_id} 15.08.2026 18:00</code>"
+        )
+        return
+
+    deadline_dt = parse_deadline(date_str, config.tz)
+    deadline_iso = deadline_dt.isoformat() if deadline_dt else None
+
+    ok = await db.update_task_deadline(task_id, deadline_iso)
+    if not ok:
+        await message.reply("⚠️ Muddat yangilanmadi (topshiriq topilmadi).")
+        return
+
+    new_deadline_str = format_deadline(deadline_iso, config.tz)
+    await message.reply(
+        f"✅ <b>#{task_id}</b> topshiriq muddati yangilandi.\n"
+        f"🗓 Yangi muddat: {new_deadline_str}"
+    )
+
+    # Ijro guruhlariga xabar
+    notify_text = (
+        f"📝 <b>#{task_id} topshiriq muddati o'zgartirildi</b>\n"
+        f"📌 {task['title']}\n"
+        f"🗓 Yangi muddat: {new_deadline_str}"
+    )
+    for gid in config.execution_group_ids:
+        try:
+            await bot.send_message(gid, notify_text)
+        except Exception:
+            pass
+
+
 @router.message(Command("yopish", "close"))
 async def cmd_close_task(
-    message: Message, command: CommandObject, db: Database, config: Config
+    message: Message, command: CommandObject, db: Database, config: Config, bot: Bot
 ) -> None:
-    if not (message.from_user and config.is_manager(message.from_user.id)):
-        await message.reply("⛔️ Bu komanda faqat rahbar uchun.")
+    if not (message.from_user and await _is_authorized(message.from_user.id, config, db)):
+        await message.reply("⛔️ Bu komanda faqat rahbar va rahbar yordamchisi uchun.")
         return
     if not (command.args and command.args.strip().isdigit()):
         await message.reply("ℹ️ Foydalanish: <code>/yopish N</code>")

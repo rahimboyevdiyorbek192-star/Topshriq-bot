@@ -419,6 +419,14 @@ class Database:
         await self.conn.commit()
         return cur.rowcount > 0
 
+    async def update_task_deadline(self, task_id: int, deadline_iso: str | None) -> bool:
+        cur = await self.conn.execute(
+            "UPDATE tasks SET deadline = ? WHERE id = ? AND status = 'open'",
+            (deadline_iso, task_id),
+        )
+        await self.conn.commit()
+        return cur.rowcount > 0
+
     async def close_task(self, task_id: int) -> None:
         await self.conn.execute(
             "UPDATE tasks SET status = 'closed' WHERE id = ?", (task_id,)

@@ -59,7 +59,7 @@ async def _send_reminder(
     head = "🔴 <b>MUDDAT O'TDI</b>" if overdue else "⏰ <b>MUDDAT YAQIN</b>"
 
     # Guruh eslatmasi
-    if config.execution_group_id:
+    if config.execution_group_ids:
         mentions = []
         for e in not_done:
             if e["username"]:
@@ -69,7 +69,6 @@ async def _send_reminder(
                     f'<a href="tg://user?id={e["tg_id"]}">{e["full_name"]}</a>'
                 )
             else:
-                # Faqat web orqali qo'shilgan xodim — Telegram havolasi yo'q
                 mentions.append(e["full_name"])
         text = (
             f"{head} — Topshiriq #{task['id']}: {task['title']}\n"
@@ -78,10 +77,11 @@ async def _send_reminder(
             f"❗️ Hali bajarmaganlar ({len(not_done)} ta):\n"
             + ", ".join(mentions)
         )
-        try:
-            await bot.send_message(config.execution_group_id, text)
-        except Exception as exc:
-            logger.warning("Guruh eslatmasi yuborilmadi (task %s): %s", task["id"], exc)
+        for gid in config.execution_group_ids:
+            try:
+                await bot.send_message(gid, text)
+            except Exception as exc:
+                logger.warning("Guruh eslatmasi yuborilmadi (task %s, chat %s): %s", task["id"], gid, exc)
 
     # Bot orqali shaxsiy eslatma (eski xabar o'chirilib yangi yuboriladi)
     head_private = "⏰ Salom! Topshiriq muddati yaqinlashdi." if not overdue else "🔴 Topshiriq muddati o'tib ketdi!"
