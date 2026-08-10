@@ -641,6 +641,51 @@ async def handle_history(request: web.Request) -> web.Response:
 
 # ── Topshiriqni o'chirish (faqat bosh rahbar) ──────────────
 
+async def handle_task_deadline_update(request: web.Request) -> web.Response:
+    """Rahbar yoki rahbar yordamchisi topshiriq muddatini tahrirlaydi."""
+    user, is_mgr, am_sector = await _get_mgr_level(request)
+    if not user:
+        return _json({"error": "Ruxsat yo'q"}, 401)
+    if not is_mgr:
+        return _json({"error": "Faqat rahbar uchun"}, 403)
+
+    task_id = int(request.match_info.get("task_id", "0"))
+    db: Database   = request.app["db"]
+    config: Config = request.app["config"]
+    bot            = request.app["bot"]
+
+    try:
+        data = await request.json()
+    except Exception:
+        return _json({"error": "JSON o'qishda xato"}, 400)
+
+    deadline = (data.get("deadline") or "").strip() or None
+
+    task = await db.get_task(task_id)
+    if not task:
+        return _json({"error": "Topshiriq topilmadi"}, 404)
+
+    was_closed = task["status"] != "open"
+    ok = await db.update_task_deadline(task_id, deadline)
+    if not ok:
+        return _json({"error": "Yangilashda xato"}, 500)
+
+    new_dl = format_deadline(deadline, config.tz)
+    notify_text = (
+        f"📝 <b>#{task_id} topshiriq muddati o'zgartirildi</b>\n"
+        f"📌 {task['title']}\n"
+        f"🗓 Yangi muddat: {new_dl}"
+        + ("\n🔓 Topshiriq qayta ochildi." if was_closed else "")
+    )
+    for gid in config.execution_group_ids:
+        try:
+            await bot.send_message(gid, notify_text)
+        except Exception:
+            pass
+
+    return _json({"ok": True, "was_closed": was_closed, "deadline": deadline})
+
+
 async def handle_task_delete(request: web.Request) -> web.Response:
     user, is_mgr, am_sector = await _get_mgr_level(request)
     if not user:
@@ -1539,9 +1584,10 @@ def create_webapp(config: Config, db: Database, bot) -> web.Application:
     app.router.add_get("/api/tasks",                  handle_tasks)
     app.router.add_post("/api/tasks",                 handle_tasks_create)
     app.router.add_get("/api/tasks/history",          handle_history)           # static — {task_id}'dan oldin
-    app.router.add_get("/api/tasks/{task_id}/detail", handle_task_detail)
-    app.router.add_get("/api/tasks/{task_id}/zip",    handle_task_zip)
-    app.router.add_delete("/api/tasks/{task_id}",     handle_task_delete)
+    app.router.add_get("/api/tasks/{task_id}/detail",    handle_task_detail)
+    app.router.add_get("/api/tasks/{task_id}/zip",       handle_task_zip)
+    app.router.add_patch("/api/tasks/{task_id}/deadline", handle_task_deadline_update)
+    app.router.add_delete("/api/tasks/{task_id}",        handle_task_delete)
     app.router.add_post("/api/submit",                handle_submit)
     app.router.add_get("/api/file/{file_id}",         handle_file_proxy)
 

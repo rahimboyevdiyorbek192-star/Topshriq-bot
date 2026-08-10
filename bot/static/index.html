@@ -1135,7 +1135,10 @@ function mgrDetailPage() {
   <div class="detail-body pad-nav">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
       <button class="btn btn-ghost btn-sm" data-act="page" data-page="tasks">← Orqaga</button>
-      ${S.amSector === null ? `<button class="btn btn-sm" style="color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger)" data-act="delete-task" data-id="${t.id}">🗑️ O'chirish</button>` : ''}
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm btn-ghost" data-act="edit-deadline" data-id="${t.id}" style="color:var(--primary);border-color:var(--primary)">🗓 Muddat</button>
+        ${S.amSector === null ? `<button class="btn btn-sm" style="color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger)" data-act="delete-task" data-id="${t.id}">🗑️ O'chirish</button>` : ''}
+      </div>
     </div>
     ${taskHeaderHtml(t)}
 
@@ -1712,7 +1715,8 @@ function employeesPage() {
       </div>
     </div>
   </div>
-  <div id="emp-modal"></div>`;
+  <div id="emp-modal"></div>
+  <div id="dl-modal"></div>`;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -2273,6 +2277,61 @@ async function doDeleteTask(id) {
   gotoPage('tasks');
 }
 
+/* ── Muddat tahrirlash modali ────────────────────────────── */
+function openDeadlineModal(taskId) {
+  const t = S.tasks.find(x => x.id === taskId) || (S.history||[]).find(x => x.id === taskId) || S.activeTask;
+  const curVal = t && t.deadline ? localInputValue(new Date(t.deadline)) : '';
+  const c = document.getElementById('dl-modal');
+  if (!c) return;
+  c.innerHTML = `
+  <div class="modal-overlay" id="dl-overlay" style="display:flex">
+    <div class="modal">
+      <div class="modal-head">
+        <span class="modal-title">🗓 Muddatni tahrirlash</span>
+        <button class="modal-close" id="dl-close">✕</button>
+      </div>
+      <p style="font-size:13px;color:var(--hint);margin-bottom:14px">
+        #${taskId} — ${t ? esc(t.title) : ''}<br>
+        <span style="color:var(--warning)">Muddati o'tgan yoki yopilgan topshiriq ham qayta ochiladi.</span>
+      </p>
+      <label class="form-label">Yangi muddat</label>
+      <input class="form-input" id="dl-input" type="datetime-local" value="${curVal}" style="margin-bottom:18px">
+      <button class="btn btn-primary btn-full" id="dl-save">✅ Saqlash</button>
+    </div>
+  </div>`;
+  document.getElementById('dl-close').onclick  = closeDeadlineModal;
+  document.getElementById('dl-overlay').onclick = e => { if (e.target.id === 'dl-overlay') closeDeadlineModal(); };
+  document.getElementById('dl-save').onclick    = () => saveDeadline(taskId);
+}
+
+function closeDeadlineModal() {
+  const c = document.getElementById('dl-modal');
+  if (c) c.innerHTML = '';
+}
+
+async function saveDeadline(taskId) {
+  const inp = document.getElementById('dl-input');
+  if (!inp) return;
+  const raw = inp.value;
+  const deadline = raw ? localToIso(raw) : null;
+  const btn = document.getElementById('dl-save');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Saqlanmoqda...'; }
+  const data = await api(`/api/tasks/${taskId}/deadline`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({deadline}),
+  });
+  if (!data) { if (btn) { btn.disabled=false; btn.textContent='✅ Saqlash'; } return; }
+  if (data.error) { showAlert(data.error); if (btn) { btn.disabled=false; btn.textContent='✅ Saqlash'; } return; }
+  // Lokalda yangilash
+  const upd = t => { if (t && t.id === taskId) { t.deadline = deadline || ''; t.status = 'open'; } };
+  S.tasks.forEach(upd); (S.history||[]).forEach(upd);
+  if (S.activeTask && S.activeTask.id === taskId) { S.activeTask.deadline = deadline || ''; S.activeTask.status = 'open'; }
+  closeDeadlineModal();
+  toast(data.was_closed ? '🔓 Topshiriq qayta ochildi, muddat yangilandi' : '✅ Muddat yangilandi');
+  render();
+}
+
 /* ════════════════════════════════════════════════════════════
    KPI tizimi
    ════════════════════════════════════════════════════════════ */
@@ -2656,7 +2715,8 @@ document.addEventListener('click', ev => {
     case 'track-emp':   gotoPage('track-emp', {trackEmpId: parseInt(d.id,10), trackEmpName: d.name || '', trackDate: todayStr()}); break;
     case 'track-back':  gotoPage('map'); break;
     case 'track-date':  loadEmpTrack(document.getElementById('track-date-input')?.value || todayStr()); break;
-    case 'delete-task': doDeleteTask(parseInt(d.id, 10)); break;
+    case 'delete-task':    doDeleteTask(parseInt(d.id, 10)); break;
+    case 'edit-deadline':  openDeadlineModal(parseInt(d.id, 10)); break;
 
     case 'hist-status':
       if (!S.histFilter) S.histFilter = {status:'all', search:'', date:null};
