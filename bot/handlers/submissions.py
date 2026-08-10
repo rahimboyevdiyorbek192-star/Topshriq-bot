@@ -303,7 +303,7 @@ async def handle_group_submission(
                 continue
             _tag = _TASK_TAG.search(_txt)
             if _tag:
-                _tid = int(_tag.group(1))
+                _tid = int(_tag.group(1) or _tag.group(2))
                 _task = await db.get_task(_tid)
                 if _task:
                     task_id = _tid
