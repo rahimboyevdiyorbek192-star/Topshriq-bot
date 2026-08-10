@@ -134,6 +134,13 @@ async def _resolve_task_id(message: Message, db: Database) -> int | None:
     return None
 
 
+async def _sector_total(task_id: int, db: Database) -> int:
+    """Topshiriq sektoriga tegishli xodimlar soni (sektor yo'q = barchasi)."""
+    task = await db.get_task(task_id)
+    sector = task["target_sector"] if task else None
+    return await db.count_employees(sector=sector)
+
+
 async def _record_files(
     task_id: int,
     employee_id: int,
@@ -160,7 +167,7 @@ async def _record_files(
                 file_id=fid, file_name=fname, file_kind=fkind,
             )
     submitted = await db.submitted_employee_ids(task_id)
-    total = await db.count_employees()
+    total = await _sector_total(task_id, db)
     return len(submitted), total
 
 
@@ -171,9 +178,13 @@ async def _record_submission(
     file_id: str | None = None,
     file_name: str | None = None,
     note: str | None = None,
+    employee=None,
 ) -> None:
-    """Topshirishni DBga yozib, tasdiq xabari yuboradi."""
-    user = message.from_user
+    """Topshirishni DBga yozib, tasdiq xabari yuboradi.
+
+    employee: forward qilingan holatda asl yuboruvchi (message.from_user o'rniga).
+    """
+    user = employee or message.from_user
     if not user:
         return
 
@@ -198,11 +209,12 @@ async def _record_submission(
     )
 
     submitted = await db.submitted_employee_ids(task_id)
-    total     = await db.count_employees()
+    total     = await _sector_total(task_id, db)
     verb      = "qabul qilindi" if is_new else "yangilandi"
+    name_part = f" ({_full_name(user)})" if employee else ""
     try:
         await message.reply(
-            f"✅ <b>#{task_id}-topshiriq</b> bo'yicha ishingiz {verb}.\n"
+            f"✅ <b>#{task_id}-topshiriq</b>{name_part} bo'yicha ish {verb}.\n"
             f"({len(submitted)}/{total} xodim topshirdi)",
             disable_notification=True,
         )
@@ -247,24 +259,33 @@ async def handle_group_submission(
     if not user:
         return
 
-    # Faqat ijro guruhida ishlaydi
+    # ── Asl yuboruvchini aniqlash (rahbar forward qilgan bo'lsa) ──
+    # Rahbar xodimning faylini guruhga forward qilsa → xodim hisoblanadi.
+    effective_user = user
+    if config.is_manager(user.id) and message.forward_origin:
+        origin_user = getattr(message.forward_origin, "sender_user", None)
+        if origin_user and not origin_user.is_bot:
+            effective_user = origin_user
+
+    # ── Guruh filtri ──────────────────────────────────────────────
     if config.execution_group_id is not None:
         if message.chat.id != config.execution_group_id:
             return
     else:
-        # Kanal postlarini o'tkazib yuborish
         if config.tasks_channel_id and message.chat.id == config.tasks_channel_id:
             return
-        # Topshiriqlar guruhidan faqat rahbar xabarlarini o'tkazib yuborish.
-        # Xodimlar shu guruhda fayl yuborsa — topshiriq sifatida qabul qilinadi.
         if config.tasks_group_id and message.chat.id == config.tasks_group_id:
-            if config.is_manager(user.id):
+            # Rahbarning OZ xabari (forward emas) — o'tkazib yuboramiz
+            if config.is_manager(user.id) and effective_user is user:
                 return
 
-    # Auto-register
-    emp = await db.get_employee(user.id)
+    # Auto-register effective_user
+    emp = await db.get_employee(effective_user.id)
     if not emp:
-        await db.add_employee(user.id, _full_name(user), user.username)
+        await db.add_employee(effective_user.id, _full_name(effective_user), effective_user.username)
+
+    euid = effective_user.id
+    emp_arg = effective_user if effective_user is not user else None
 
     task_id = await _resolve_task_id(message, db)
     note = message_text(message)[:1000] or None
@@ -294,18 +315,19 @@ async def handle_group_submission(
             ]
             if files:
                 submitted, total = await _record_files(
-                    task_id, user.id, files, note, message.message_id, db
+                    task_id, euid, files, note, message.message_id, db
                 )
+                name_part = f" ({_full_name(effective_user)})" if emp_arg else ""
                 try:
                     await message.reply(
-                        f"✅ <b>#{task_id}-topshiriq</b>: {len(files)} ta fayl qabul qilindi.\n"
+                        f"✅ <b>#{task_id}-topshiriq</b>{name_part}: {len(files)} ta fayl qabul qilindi.\n"
                         f"({submitted}/{total} xodim topshirdi)",
                         disable_notification=True,
                     )
                 except Exception:
                     pass
                 return
-        await _record_submission(message, task_id, db)
+        await _record_submission(message, task_id, db, employee=emp_arg)
         return
 
     # Topshiriq ko'rsatilmagan — bot so'raydi
@@ -335,11 +357,12 @@ async def handle_group_submission(
         task_id = tasks[0]["id"]
         all_files = media_files + doc_files
         submitted, total = await _record_files(
-            task_id, user.id, all_files, note, message.message_id, db
+            task_id, euid, all_files, note, message.message_id, db
         )
+        name_part = f" ({_full_name(effective_user)})" if emp_arg else ""
         try:
             await message.reply(
-                f"✅ <b>#{task_id}-topshiriq</b> ga {len(all_files)} ta fayl qabul qilindi.\n"
+                f"✅ <b>#{task_id}-topshiriq</b>{name_part} ga {len(all_files)} ta fayl qabul qilindi.\n"
                 f"({submitted}/{total} xodim topshirdi)",
                 disable_notification=True,
             )
@@ -367,11 +390,12 @@ async def handle_group_submission(
         task_id = matched[0]["id"]
         all_files = media_files + doc_files
         submitted, total = await _record_files(
-            task_id, user.id, all_files, note, message.message_id, db
+            task_id, euid, all_files, note, message.message_id, db
         )
+        name_part = f" ({_full_name(effective_user)})" if emp_arg else ""
         try:
             await message.reply(
-                f"🔍 <b>#{task_id}-topshiriq</b> nomi bilan mos keldi — avtomatik biriktirildi.\n"
+                f"🔍 <b>#{task_id}-topshiriq</b>{name_part} nomi bilan mos keldi.\n"
                 f"✅ {len(all_files)} ta fayl qabul qilindi.\n"
                 f"({submitted}/{total} xodim topshirdi)",
                 disable_notification=True,
@@ -389,14 +413,14 @@ async def handle_group_submission(
     rows = [
         [InlineKeyboardButton(
             text=f"#{t['id']} {t['title'][:38]}",
-            callback_data=f"grp_al:{t['id']}:{user.id}",
+            callback_data=f"grp_al:{t['id']}:{euid}",
         )]
         for t in tasks[:10]
     ]
 
     # Foto/video albom — bitta savol
     if media_files:
-        _pending_group_album[user.id] = {
+        _pending_group_album[euid] = {
             "files": media_files,
             "note": note,
             "msg_id": message.message_id,
@@ -418,7 +442,7 @@ async def handle_group_submission(
             "file_name": fname,
             "file_kind": fkind,
             "note":      note,
-            "user_id":   user.id,
+            "user_id":   euid,
             "msg_id":    message.message_id,
         }
         doc_rows = [
@@ -577,7 +601,7 @@ async def cb_grp_doc(callback: CallbackQuery, db: Database) -> None:
         )
 
     submitted = await db.submitted_employee_ids(task_id)
-    total     = await db.count_employees()
+    total     = await _sector_total(task_id, db)
     display   = file_name or file_kind or "Fayl"
     await callback.message.edit_text(
         f"✅ <b>#{task_id}-topshiriq</b>: {display} qabul qilindi.\n"
@@ -613,7 +637,7 @@ async def cb_dm_submit(
     )
 
     submitted = await db.submitted_employee_ids(task_id)
-    total     = await db.count_employees()
+    total     = await _sector_total(task_id, db)
     verb      = "qabul qilindi" if is_new else "yangilandi"
 
     file_info = f"📎 Fayl: {file_name}" if file_name else ("📸 Rasm" if file_id else "📝 Matn")
