@@ -25,6 +25,7 @@ from ..config import Config
 from ..database import Database
 from ..utils.deadline import humanize_left
 from ..utils.files import extract_file, message_text
+from ..utils.filetext import extract_text_from_bytes
 
 router = Router()
 
@@ -256,7 +257,7 @@ async def cmd_my_tasks(
     & (F.text | F.caption | F.document | F.photo | F.video | F.audio | F.voice)
 )
 async def handle_group_submission(
-    message: Message, db: Database, config: Config,
+    message: Message, db: Database, config: Config, bot: Bot,
     album: list[Message] | None = None,
 ) -> None:
     user = message.from_user
@@ -388,6 +389,29 @@ async def handle_group_submission(
 
     kws = _extract_kws(kw_sources)
     matched = _match_tasks(tasks, kws)
+
+    # Aniq topilmasa — docx/xlsx/pdf ichidagi matnni ham tekshiramiz
+    if len(matched) != 1:
+        extra_added = False
+        for fid, fname, fkind in doc_files:
+            if not fname:
+                continue
+            ext = fname.lower().rsplit(".", 1)[-1] if "." in fname else ""
+            if ext not in ("docx", "xlsx", "xls", "pdf"):
+                continue
+            try:
+                tg_file = await bot.get_file(fid)
+                buf = await bot.download_file(tg_file.file_path)
+                raw = buf.read() if hasattr(buf, "read") else bytes(buf)
+                inner = extract_text_from_bytes(raw, fname)
+                if inner:
+                    kw_sources.append(inner)
+                    extra_added = True
+            except Exception:
+                pass
+        if extra_added:
+            kws = _extract_kws(kw_sources)
+            matched = _match_tasks(tasks, kws)
 
     if len(matched) == 1:
         # Yagona kalit so'z mos keldi — so'ramasdan avtomatik biriktir
