@@ -420,8 +420,9 @@ class Database:
         return cur.rowcount > 0
 
     async def update_task_deadline(self, task_id: int, deadline_iso: str | None) -> bool:
+        """Muddatni yangilaydi va agar topshiriq yopilgan bo'lsa — qayta ochadi."""
         cur = await self.conn.execute(
-            "UPDATE tasks SET deadline = ? WHERE id = ? AND status = 'open'",
+            "UPDATE tasks SET deadline = ?, status = 'open' WHERE id = ?",
             (deadline_iso, task_id),
         )
         await self.conn.commit()

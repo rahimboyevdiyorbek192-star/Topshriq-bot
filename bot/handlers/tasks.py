@@ -442,13 +442,13 @@ async def cmd_edit_deadline(
     if not task:
         await message.reply(f"⚠️ #{task_id} topshiriq topilmadi.")
         return
-    if task["status"] != "open":
-        await message.reply(f"⚠️ #{task_id} topshiriq yopilgan.")
-        return
+
+    was_closed = task["status"] != "open"
 
     if not date_str:
+        status_note = " (yopilgan)" if was_closed else ""
         await message.reply(
-            f"📋 <b>#{task_id}</b> — {task['title']}\n"
+            f"📋 <b>#{task_id}</b>{status_note} — {task['title']}\n"
             f"🗓 Hozirgi muddat: {format_deadline(task['deadline'], config.tz)}\n\n"
             "Yangi muddatni kiriting:\n"
             f"<code>/muddat {task_id} 15.08.2026 18:00</code>"
@@ -464,16 +464,18 @@ async def cmd_edit_deadline(
         return
 
     new_deadline_str = format_deadline(deadline_iso, config.tz)
+    reopen_note = "\n🔓 Topshiriq qayta ochildi." if was_closed else ""
     await message.reply(
-        f"✅ <b>#{task_id}</b> topshiriq muddati yangilandi.\n"
+        f"✅ <b>#{task_id}</b> topshiriq muddati yangilandi.{reopen_note}\n"
         f"🗓 Yangi muddat: {new_deadline_str}"
     )
 
     # Ijro guruhlariga xabar
     notify_text = (
-        f"📝 <b>#{task_id} topshiriq muddati o'zgartirildi</b>\n"
+        f"📝 <b>#{task_id} topshiriq muddati uzaytirildi</b>\n"
         f"📌 {task['title']}\n"
         f"🗓 Yangi muddat: {new_deadline_str}"
+        + ("\n🔓 Topshiriq qayta ochildi." if was_closed else "")
     )
     for gid in config.execution_group_ids:
         try:
