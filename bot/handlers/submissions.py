@@ -243,19 +243,23 @@ async def handle_group_submission(
     message: Message, db: Database, config: Config,
     album: list[Message] | None = None,
 ) -> None:
+    user = message.from_user
+    if not user:
+        return
+
     # Faqat ijro guruhida ishlaydi
     if config.execution_group_id is not None:
         if message.chat.id != config.execution_group_id:
             return
     else:
-        if config.tasks_group_id and message.chat.id == config.tasks_group_id:
-            return
+        # Kanal postlarini o'tkazib yuborish
         if config.tasks_channel_id and message.chat.id == config.tasks_channel_id:
             return
-
-    user = message.from_user
-    if not user:
-        return
+        # Topshiriqlar guruhidan faqat rahbar xabarlarini o'tkazib yuborish.
+        # Xodimlar shu guruhda fayl yuborsa — topshiriq sifatida qabul qilinadi.
+        if config.tasks_group_id and message.chat.id == config.tasks_group_id:
+            if config.is_manager(user.id):
+                return
 
     # Auto-register
     emp = await db.get_employee(user.id)

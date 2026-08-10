@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 
 from aiohttp import web as aiohttp_web
 from aiogram import Bot, Dispatcher
@@ -86,7 +87,18 @@ async def main() -> None:
         webapp_runner = aiohttp_web.AppRunner(webapp)
         await webapp_runner.setup()
         site = aiohttp_web.TCPSite(webapp_runner, config.webapp_host, config.webapp_port)
-        await site.start()
+        try:
+            await site.start()
+        except OSError as exc:
+            if exc.errno in (98, 10048):  # Linux EADDRINUSE / Windows
+                logger.error(
+                    "❌ Port %s band! Avvalgi bot hali ishlayapti.\n"
+                    "  Windows: Task Manager oching → python.exe ni topib 'End Task' bosing\n"
+                    "  Yoki .env faylida WEBAPP_PORT=8081 yozing va qayta ishga tushiring.",
+                    config.webapp_port,
+                )
+                sys.exit(1)
+            raise
         logger.info("Mini App server ishga tushdi: http://%s:%s  (WEBAPP_URL=%s)",
                     config.webapp_host, config.webapp_port, config.webapp_url)
     else:
