@@ -12,7 +12,7 @@ import time
 from typing import Any
 
 from aiogram import Bot, F, Router
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import BaseFilter, Command, CommandObject
 from aiogram.types import (
     InputMediaDocument,
     InputMediaPhoto,
@@ -230,10 +230,31 @@ async def _should_be_task(
     return True, title, body
 
 
-# ── BARCHA MENEJER XABARLARI ─────────────────────────────────
+# ── Filtr: faqat rahbarning O'Z xabarlari (forward emas) ────
+
+class _IsManagerTaskPost(BaseFilter):
+    """Faqat rahbarning o'z topshiriq xabarlarini o'tkazadi.
+
+    Forward qilingan xabarlar va oddiy xodim xabarlari REJECT qilinadi,
+    shuning uchun ular submissions handleriga yetib boradi.
+    """
+
+    async def __call__(self, message: Message, config: Config) -> bool:
+        # Forward = xodim topshirig'i, submissions handler uchun
+        if message.forward_origin:
+            return False
+        if not _is_tasks_source(message, config):
+            return False
+        if not _is_manager_post(message, config):
+            return False
+        return True
+
+
+# ── RAHBAR TOPSHIRIQ XABARLARI ───────────────────────────────
 
 @router.message(
-    (F.chat.type.in_({"group", "supergroup"})) | (F.chat.type == "channel")
+    _IsManagerTaskPost(),
+    (F.chat.type.in_({"group", "supergroup"})) | (F.chat.type == "channel"),
 )
 async def handle_any_manager_message(
     message: Message,
@@ -243,10 +264,6 @@ async def handle_any_manager_message(
     bot: Bot,
     ai: Any = None,
 ) -> None:
-    if not _is_tasks_source(message, config):
-        return
-    if not _is_manager_post(message, config):
-        return
     if _cache_check(message.chat.id, message.message_id):
         return
 
