@@ -453,10 +453,30 @@ async def handle_task_detail(request: web.Request) -> web.Response:
         if t_sector is not None and t_sector != am_sector:
             return _json({"error": "Ruxsat yo'q"}, 403)
 
-    submissions  = await db.get_all_task_submissions(task_id)
+    submissions  = [dict(r) for r in await db.get_all_task_submissions(task_id)]
     total_emp    = await db.count_employees(sector=am_sector)
     task_files   = await db.get_task_files(task_id)
     file_counts  = await db.get_task_file_counts(task_id)
+
+    # Retroaktiv EXIF: eski topshiriqlar uchun disk fayldan EXIF o'qib bazaga yozamiz
+    for s in submissions:
+        if not s.get("exif_date") and s.get("local_path"):
+            lp = Path(s["local_path"])
+            if lp.exists():
+                try:
+                    exif_d, exif_dev, exif_g = _extract_exif_info(lp.read_bytes(), lp.name)
+                    if exif_d or exif_dev or exif_g:
+                        await db.conn.execute(
+                            "UPDATE submissions SET exif_date=?, exif_device=?, exif_gps=?"
+                            " WHERE task_id=? AND employee_id=?",
+                            (exif_d, exif_dev, exif_g, s["task_id"], s["employee_id"]),
+                        )
+                        await db.conn.commit()
+                        s["exif_date"] = exif_d
+                        s["exif_device"] = exif_dev
+                        s["exif_gps"] = exif_g
+                except Exception:
+                    pass
 
     return _json({
         "task": {
