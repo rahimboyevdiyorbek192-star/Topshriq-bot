@@ -398,9 +398,11 @@ async def handle_tasks(request: web.Request) -> web.Response:
         task_files     = await db.get_task_files(t["id"])
         my_sub         = await db.get_submission(t["id"], user_id)
         req_files      = t["required_files"] if "required_files" in t.keys() else 0
-        my_file_count  = await db.count_employee_total_files(t["id"], user_id) if not is_manager else 0
+        # AM ham o'z topshiriq holatini ko'rishi kerak (user_id real tg_id)
+        can_submit = not is_manager or am_sector is not None
+        my_file_count  = await db.count_employee_total_files(t["id"], user_id) if can_submit else 0
         submitted_me   = (
-            user_id in submitted_ids and (req_files == 0 or my_file_count >= req_files)
+            can_submit and user_id in submitted_ids and (req_files == 0 or my_file_count >= req_files)
         )
 
         result.append({
@@ -1024,10 +1026,8 @@ async def handle_submit(request: web.Request) -> web.Response:
     uploads_dir = Path(config.db_path).resolve().parent / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
-    send_chats: list[int] = []
-    send_chats.extend(config.execution_group_ids)
-    if config.manager_ids:
-        send_chats.extend(config.manager_ids)
+    # Faqat rahbar DM ga — ijro guruhiga xodim fayllarini yubormаymiz
+    send_chats: list[int] = list(config.manager_ids) if config.manager_ids else []
 
     if pending:
         uname = f"@{user['username']}" if user.get("username") else full_name
