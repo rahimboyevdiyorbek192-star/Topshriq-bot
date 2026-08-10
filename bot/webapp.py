@@ -774,19 +774,18 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
         creator_name=creator_name,
     )
 
-    # Namuna fayllarni Telegram'ga yuborish va task_files ga saqlash
+    # Namuna fayllarni Telegram'ga yuborish — file_id olish uchun menejerga yuboriladi
     if pending:
         bot = request.app["bot"]
-        send_chat = config.execution_group_id or (
-            config.manager_ids[0] if config.manager_ids else None
+        upload_chat = config.manager_ids[0] if config.manager_ids else (
+            config.execution_group_ids[0] if config.execution_group_ids else None
         )
-        if send_chat:
+        if upload_chat:
             from aiogram.types import BufferedInputFile
-            for idx, (fname, fdata) in enumerate(pending):
+            for fname, fdata in pending:
                 try:
-                    caption = f"📎 <b>Topshiriq #{task_id} namuna fayl</b>" if idx == 0 else None
                     sent = await bot.send_document(
-                        send_chat, BufferedInputFile(fdata, filename=fname), caption=caption
+                        upload_chat, BufferedInputFile(fdata, filename=fname)
                     )
                     if sent and sent.document:
                         await db.add_task_file(task_id, sent.document.file_id, fname, "document")
@@ -795,22 +794,39 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
 
     if config.execution_group_ids:
         bot = request.app["bot"]
+        task_files_list = await db.get_task_files(task_id)
         dl_text = format_deadline(deadline, config.tz) if deadline else "belgilanmagan"
         sector_tag = f" (Sektor {am_sector})" if am_sector else ""
-        text = (
+        ann_text = (
             f"📋 <b>Yangi topshiriq #{task_id}{sector_tag}</b>\n"
             f"📌 {title}\n"
             f"📅 Muddat: {dl_text}"
         )
         if creator_name:
-            text += f"\n👤 {creator_name} (Rahbar Yordamchisi)"
+            ann_text += f"\n👤 {creator_name} (Rahbar Yordamchisi)"
         if description:
-            text += f"\n📝 {description[:200]}"
+            ann_text += f"\n📝 {description[:200]}"
         if required_files:
-            text += f"\n📂 Talab: {required_files} ta fayl"
+            ann_text += f"\n📂 Talab: {required_files} ta fayl"
         for gid in config.execution_group_ids:
             try:
-                await bot.send_message(gid, text)
+                if len(task_files_list) == 1:
+                    await bot.send_document(gid, task_files_list[0]["file_id"], caption=ann_text)
+                elif task_files_list:
+                    from aiogram.types import InputMediaDocument
+                    media = [
+                        InputMediaDocument(
+                            media=f["file_id"],
+                            caption=ann_text if i == 0 else None,
+                        )
+                        for i, f in enumerate(task_files_list)
+                    ]
+                    try:
+                        await bot.send_media_group(gid, media)
+                    except Exception:
+                        await bot.send_message(gid, ann_text)
+                else:
+                    await bot.send_message(gid, ann_text)
             except Exception as exc:
                 logger.warning("Topshiriq e'lon xato (chat %s): %s", gid, exc)
 
