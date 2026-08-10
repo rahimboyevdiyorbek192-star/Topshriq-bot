@@ -74,11 +74,21 @@ def _extract_exif_info(
             return None, None, None
 
         exif_date: str | None = None
-        for tag_id in (36867, 36868, 306):
-            val = exif.get(tag_id)
+        # EXIF sub-IFD (0x8769) dan DateTimeOriginal — eng to'g'ri manba
+        try:
+            exif_ifd = exif.get_ifd(0x8769)
+            for tag_id in (36867, 36868):
+                val = exif_ifd.get(tag_id)
+                if val:
+                    exif_date = str(val)
+                    break
+        except Exception:
+            pass
+        # Fallback: IFD0 DateTime
+        if not exif_date:
+            val = exif.get(306)
             if val:
                 exif_date = str(val)
-                break
 
         make  = (exif.get(271) or "").strip()
         model = (exif.get(272) or "").strip()

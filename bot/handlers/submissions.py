@@ -57,11 +57,19 @@ async def _try_store_exif(
         if not exif_raw:
             return
         exif_date: str | None = None
-        for tag_id in (36867, 36868, 306):
-            val = exif_raw.get(tag_id)
+        try:
+            exif_ifd = exif_raw.get_ifd(0x8769)
+            for tag_id in (36867, 36868):
+                val = exif_ifd.get(tag_id)
+                if val:
+                    exif_date = str(val)
+                    break
+        except Exception:
+            pass
+        if not exif_date:
+            val = exif_raw.get(306)
             if val:
                 exif_date = str(val)
-                break
         make  = (exif_raw.get(271) or "").strip()
         model = (exif_raw.get(272) or "").strip()
         exif_device: str | None = None

@@ -1326,14 +1326,15 @@ function _parseJpegExif(buf) {
             var s='';
             for(var j=0;j<cnt-1&&j<256;j++){var c=dv.getUint8(vp+j);if(!c)break;s+=String.fromCharCode(c);}
             s=s.trim();
-            if((tag===0x9003||tag===0x9004||tag===0x0132)&&!out.date)out.date=s;
+            if((tag===0x9003||tag===0x9004)&&!out.date)out.date=s;
+            else if(tag===0x0132&&!out._dt)out._dt=s;  // fallback, sub-IFD ustunroq
             else if(tag===0x010F)out._mk=s;
             else if(tag===0x0110)out._md=s;
           } else if(typ===4&&cnt===1&&tag===0x8769) out._exif=dv.getUint32(B+e+8,le);
           else if(typ===4&&cnt===1&&tag===0x8825) out._gps=dv.getUint32(B+e+8,le);
         }
-        // EXIF sub-IFD — DateTimeOriginal (0x9003) IFD0 da yo'q bo'lsa shu yerdan o'qiladi
-        if (out._exif !== undefined && !out.date) {
+        // EXIF sub-IFD — DateTimeOriginal (0x9003) har doim IFD0 DateTime dan ustun
+        if (out._exif !== undefined) {
           var ei=out._exif, en=u16(ei);
           for (var i=0; i<en&&i<64; i++) {
             var e2=ei+2+i*12, tag2=u16(e2), typ2=u16(e2+2), cnt2=u32(e2+4);
@@ -1345,7 +1346,9 @@ function _parseJpegExif(buf) {
             }
           }
         }
-        delete out._exif;
+        // Sub-IFD dan topilmagan bo'lsa IFD0 DateTime ni fallback sifatida ishlatamiz
+        if (!out.date && out._dt) out.date = out._dt;
+        delete out._exif; delete out._dt;
         if (out._gps!==undefined) {
           var gi=out._gps,gn=u16(gi),latR='N',lonR='E',lat=null,lon=null;
           for(var i=0;i<gn&&i<32;i++){
