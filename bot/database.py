@@ -385,17 +385,24 @@ class Database:
         return await cur.fetchone()
 
     async def list_open_tasks(self, sector: int | None = None) -> list[aiosqlite.Row]:
-        """Ochiq topshiriqlar. sector berilsa — faqat shu sektorn va umumiy (NULL) topshiriqlar."""
+        """Ochiq topshiriqlar. Muddati o'tganlar ko'rsatilmaydi (Tarix da ko'rinadi).
+        sector berilsa — faqat shu sektor va umumiy (NULL) topshiriqlar."""
+        from datetime import datetime as _dt
+        now = _dt.now().isoformat()
         if sector is not None:
             cur = await self.conn.execute(
                 """SELECT * FROM tasks WHERE status = 'open'
                    AND (target_sector = ? OR target_sector IS NULL)
+                   AND (deadline IS NULL OR deadline >= ?)
                    ORDER BY id DESC""",
-                (sector,),
+                (sector, now),
             )
         else:
             cur = await self.conn.execute(
-                "SELECT * FROM tasks WHERE status = 'open' ORDER BY id DESC"
+                """SELECT * FROM tasks WHERE status = 'open'
+                   AND (deadline IS NULL OR deadline >= ?)
+                   ORDER BY id DESC""",
+                (now,),
             )
         return list(await cur.fetchall())
 
