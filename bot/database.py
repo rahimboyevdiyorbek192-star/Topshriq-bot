@@ -441,19 +441,6 @@ class Database:
         )
         await self.conn.commit()
 
-    async def tasks_due_between(
-        self, start_iso: str, end_iso: str
-    ) -> list[aiosqlite.Row]:
-        cur = await self.conn.execute(
-            """
-            SELECT * FROM tasks
-            WHERE status = 'open' AND deadline IS NOT NULL
-              AND deadline > ? AND deadline <= ?
-            """,
-            (start_iso, end_iso),
-        )
-        return list(await cur.fetchall())
-
     # ---------- Topshiriqlarni bajarish (submissions) ----------
     async def add_submission(
         self,

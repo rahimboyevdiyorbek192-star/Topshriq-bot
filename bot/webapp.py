@@ -121,10 +121,6 @@ def _extract_exif_info(
     return None, None, None
 
 
-def _extract_exif_date(data: bytes, filename: str) -> str | None:
-    return _extract_exif_info(data, filename)[0]
-
-
 async def _tg_send_submission(bot, send_chats: list, uname: str, task_id: int,
                                files_info: list[tuple[str, str]]) -> None:
     """Background: diskdagi fayllarni Telegram ga yuboradi (xabarnoma uchun)."""
