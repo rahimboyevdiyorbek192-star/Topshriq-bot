@@ -35,6 +35,14 @@ class AccessControlMiddleware(BaseMiddleware):
             logger.warning("AccessControl DB xatosi (user %s): %s", user_id, exc)
             return False  # xato bo'lsa — rad etish (xavfsiz yopiq)
 
+    def _allowed_group(self, chat_id: int) -> bool:
+        """Bu guruh .env da sozlangan guruhlardan birimi?"""
+        if chat_id in self.config.execution_group_ids:
+            return True
+        if self.config.tasks_group_id and chat_id == self.config.tasks_group_id:
+            return True
+        return False
+
     async def __call__(
         self,
         handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
@@ -44,14 +52,32 @@ class AccessControlMiddleware(BaseMiddleware):
         if isinstance(event, Message):
             user = event.from_user
             if user is None:
+                # Tizim xabari yoki anonim — o'tkazib yuborish
                 return await handler(event, data)
-            if not await self._allowed(user.id):
-                logger.info("Ruxsatsiz xabar rad etildi: user_id=%s", user.id)
-                return None
+
+            chat_type = event.chat.type
+
+            if chat_type == "private":
+                # Shaxsiy: faqat rahbar va ro'yxatdagi xodim
+                if not await self._allowed(user.id):
+                    logger.info("Ruxsatsiz shaxsiy xabar rad etildi: user_id=%s", user.id)
+                    return None
+
+            elif chat_type in ("group", "supergroup"):
+                # Guruh: faqat .env da ro'yxatga olingan guruhlar
+                if not self._allowed_group(event.chat.id):
+                    logger.info(
+                        "Noma'lum guruhdan xabar rad etildi: chat_id=%s user_id=%s",
+                        event.chat.id, user.id,
+                    )
+                    return None
+
+            # channel type — channel_post event orqali keladi, bu yerga kelmaydi
+
         elif isinstance(event, CallbackQuery):
-            user = event.from_user
-            if not await self._allowed(user.id):
+            if not await self._allowed(event.from_user.id):
                 return None
+
         return await handler(event, data)
 
 
