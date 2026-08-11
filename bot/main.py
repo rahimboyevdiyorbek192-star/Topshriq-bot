@@ -76,12 +76,14 @@ async def main() -> None:
     # Kirish nazorati — barcha xabarlardan OLDIN tekshiriladi
     dp.message.outer_middleware(access)
     dp.callback_query.outer_middleware(access)
+    dp.edited_message.outer_middleware(access)
 
     dp.message.outer_middleware(deps)
     dp.message.outer_middleware(album)
     dp.callback_query.outer_middleware(deps)
     dp.channel_post.outer_middleware(deps)
     dp.channel_post.outer_middleware(album)
+    dp.edited_message.outer_middleware(deps)
 
     dp.include_router(setup_routers())
 
@@ -125,7 +127,7 @@ async def main() -> None:
     try:
         await dp.start_polling(
             bot,
-            allowed_updates=["message", "callback_query", "channel_post"],
+            allowed_updates=["message", "edited_message", "callback_query", "channel_post"],
         )
     finally:
         scheduler.shutdown(wait=False)
