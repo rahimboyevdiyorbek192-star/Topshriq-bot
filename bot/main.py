@@ -14,7 +14,7 @@ from aiogram.types import BotCommand
 from .config import load_config
 from .database import Database
 from .handlers import setup_routers
-from .middlewares import AlbumMiddleware, DependencyMiddleware
+from .middlewares import AccessControlMiddleware, AlbumMiddleware, DependencyMiddleware
 from .scheduler import setup_scheduler
 from .ai import create_ai_client
 from .userbot import create_userbot
@@ -69,8 +69,14 @@ async def main() -> None:
     )
     dp = Dispatcher()
 
-    deps  = DependencyMiddleware(config, db, ai=ai_client)
-    album = AlbumMiddleware()
+    access = AccessControlMiddleware(config, db)
+    deps   = DependencyMiddleware(config, db, ai=ai_client)
+    album  = AlbumMiddleware()
+
+    # Kirish nazorati — barcha xabarlardan OLDIN tekshiriladi
+    dp.message.outer_middleware(access)
+    dp.callback_query.outer_middleware(access)
+
     dp.message.outer_middleware(deps)
     dp.message.outer_middleware(album)
     dp.callback_query.outer_middleware(deps)
