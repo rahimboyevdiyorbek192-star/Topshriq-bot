@@ -672,6 +672,7 @@ async function api(path, opts) {
 }
 
 function forceLogout() {
+  stopSSE();
   Store.clear();
   S = freshState();
   render({page:'login'});
@@ -933,6 +934,7 @@ async function doLogin() {
     S.amSector  = data.sector || null;
     S.user      = {first_name: data.name};
     if (!S.isManager) startLocationTracking();
+    startSSE();
     if (await loadTasks()) render({page:'tasks'});
   } catch (e) {
     formError('lerr', 'Tarmoq xatosi: ' + e.message);
@@ -1841,6 +1843,39 @@ function employeesPage() {
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
+}
+
+// ── Real-vaqt yangilanishlari (SSE) ──────────────────────
+let _sse = null, _sseReconnect = null;
+
+function startSSE() {
+  if (_sse || IS_TG) return;
+  const token = Store.getToken();
+  if (!token) return;
+  _sse = new EventSource('/api/events?token=' + encodeURIComponent(token));
+  _sse.addEventListener('task_update', async () => {
+    const wasOnTasks  = S.page === 'tasks';
+    const wasOnDetail = S.page === 'task-detail';
+    const prevTaskId  = S.activeTask;
+    await loadTasks();
+    if (wasOnTasks)  { render({page:'tasks'}); return; }
+    if (wasOnDetail) {
+      const still = S.tasks.find(t => t.id === prevTaskId);
+      if (still) { S.activeTask = prevTaskId; render({page:'task-detail'}); }
+      else       { render({page:'tasks'}); }
+    }
+  });
+  _sse.onerror = () => {
+    _sse && _sse.close();
+    _sse = null;
+    // 10 soniyadan keyin qayta ulanish
+    _sseReconnect = setTimeout(() => { _sseReconnect = null; startSSE(); }, 10000);
+  };
+}
+
+function stopSSE() {
+  if (_sseReconnect) { clearTimeout(_sseReconnect); _sseReconnect = null; }
+  if (_sse)          { _sse.close(); _sse = null; }
 }
 
 // ── Hodim tomonidan joylashuvni yuborish (fon) ───────────
@@ -2928,6 +2963,7 @@ if (tg && tg.BackButton) tg.BackButton.onClick(() => gotoPage('tasks'));
         S.user      = me.user;
         S.isManager = !!me.is_manager;
         if (!S.isManager) startLocationTracking();
+        startSSE();
         if (await loadTasks()) { render({page:'tasks'}); return; }
       }
     } catch (_) { /* pastda login sahifasiga tushamiz */ }

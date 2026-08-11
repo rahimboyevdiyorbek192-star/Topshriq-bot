@@ -69,6 +69,39 @@ class _LoginRateLimiter:
 _login_limiter = _LoginRateLimiter()
 
 
+# ── Real-vaqt hodisalar avtobusi (SSE) ────────────────────
+class _EventBus:
+    """Barcha ulangan SSE klientlariga hodisa yuboradi."""
+
+    def __init__(self) -> None:
+        self._queues: list[asyncio.Queue[str]] = []
+
+    def subscribe(self) -> asyncio.Queue[str]:
+        q: asyncio.Queue[str] = asyncio.Queue(maxsize=30)
+        self._queues.append(q)
+        return q
+
+    def unsubscribe(self, q: asyncio.Queue[str]) -> None:
+        try:
+            self._queues.remove(q)
+        except ValueError:
+            pass
+
+    def publish(self, event: str, data: dict | None = None) -> None:
+        msg = f"event: {event}\ndata: {json.dumps(data or {})}\n\n"
+        dead = []
+        for q in self._queues:
+            try:
+                q.put_nowait(msg)
+            except asyncio.QueueFull:
+                dead.append(q)
+        for q in dead:
+            self.unsubscribe(q)
+
+
+_event_bus = _EventBus()
+
+
 # ── Parol tekshiruvi ───────────────────────────────────────
 def _check_manager_password(plain: str, stored: str) -> bool:
     return _hmac.compare_digest(plain, stored)
@@ -412,6 +445,36 @@ async def handle_login(request: web.Request) -> web.Response:
     if am_sector is not None:
         resp["sector"] = am_sector
     return _json(resp)
+
+
+async def handle_sse(request: web.Request) -> web.StreamResponse:
+    """Server-Sent Events — real vaqtda yangilanishlar."""
+    user, _ = await _auth_full(request)
+    if not user:
+        return web.Response(status=401)
+
+    response = web.StreamResponse(headers={
+        "Content-Type":    "text/event-stream",
+        "Cache-Control":   "no-cache",
+        "X-Accel-Buffering": "no",
+    })
+    await response.prepare(request)
+
+    q = _event_bus.subscribe()
+    try:
+        await response.write(b": connected\n\n")
+        while True:
+            try:
+                msg = await asyncio.wait_for(q.get(), timeout=25)
+                await response.write(msg.encode())
+            except asyncio.TimeoutError:
+                await response.write(b": ping\n\n")
+    except (ConnectionResetError, asyncio.CancelledError, Exception):
+        pass
+    finally:
+        _event_bus.unsubscribe(q)
+
+    return response
 
 
 async def handle_logout(request: web.Request) -> web.Response:
@@ -831,6 +894,7 @@ async def handle_task_deadline_update(request: web.Request) -> web.Response:
         except Exception:
             pass
 
+    _event_bus.publish("task_update", {"task_id": task_id})
     return _json({"ok": True, "was_closed": was_closed, "deadline": deadline})
 
 
@@ -846,6 +910,7 @@ async def handle_task_delete(request: web.Request) -> web.Response:
     ok = await db.delete_task(task_id)
     if not ok:
         return _json({"error": "Topshiriq topilmadi"}, 404)
+    _event_bus.publish("task_update", {})
     return _json({"ok": True})
 
 
@@ -976,6 +1041,7 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
             except Exception as exc:
                 logger.warning("Topshiriq e'lon xato (chat %s): %s", gid, exc)
 
+    _event_bus.publish("task_update", {"task_id": task_id})
     return _json({"ok": True, "task_id": task_id})
 
 
@@ -1136,6 +1202,7 @@ async def handle_submit(request: web.Request) -> web.Response:
     my_file_count = await db.count_employee_total_files(task_id, user_id)
     req_files     = task["required_files"] if "required_files" in task.keys() else 0
     submitted_me  = user_id in submitted and (req_files == 0 or my_file_count >= req_files)
+    _event_bus.publish("task_update", {"task_id": task_id})
     return _json({
         "ok":              True,
         "done_count":      len(submitted),
@@ -1741,6 +1808,7 @@ def create_webapp(config: Config, db: Database, bot) -> web.Application:
     app.router.add_post("/api/login",  handle_login)
     app.router.add_post("/api/logout", handle_logout)
     app.router.add_get("/api/me",      handle_me)
+    app.router.add_get("/api/events",  handle_sse)
 
     app.router.add_get("/api/tasks",                  handle_tasks)
     app.router.add_post("/api/tasks",                 handle_tasks_create)
