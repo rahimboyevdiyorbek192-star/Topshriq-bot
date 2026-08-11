@@ -1891,9 +1891,7 @@ function stopSSE() {
 }
 
 // ── Hodim jonli lokatsiyasi ───────────────────────────────
-const LOC_DURATION_MS = 8 * 60 * 60 * 1000; // 8 soat
-
-let _locWatcher = null, _locInterval = null, _locStopTimer = null, _lastLocSent = 0;
+let _locWatcher = null, _locInterval = null, _lastLocSent = 0;
 
 function startLocationTracking() {
   if (S.isManager || !navigator.geolocation) return;
@@ -1913,15 +1911,11 @@ function startLocationTracking() {
     navigator.geolocation.getCurrentPosition(onPos, () => {},
       { enableHighAccuracy: true, timeout: 8000 });
   }, 60000);
-
-  // 8 soatdan keyin avtomatik to'xtatish
-  _locStopTimer = setTimeout(() => stopLocationTracking(), LOC_DURATION_MS);
 }
 
 function stopLocationTracking() {
-  if (_locWatcher   !== null) { navigator.geolocation.clearWatch(_locWatcher); _locWatcher   = null; }
-  if (_locInterval  !== null) { clearInterval(_locInterval);                   _locInterval  = null; }
-  if (_locStopTimer !== null) { clearTimeout(_locStopTimer);                   _locStopTimer = null; }
+  if (_locWatcher  !== null) { navigator.geolocation.clearWatch(_locWatcher); _locWatcher  = null; }
+  if (_locInterval !== null) { clearInterval(_locInterval);                   _locInterval = null; }
 }
 
 async function _pushLocation(lat, lon, accuracy) {
