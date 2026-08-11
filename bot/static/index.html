@@ -339,6 +339,17 @@ textarea.form-input{resize:vertical;min-height:90px}
   background:var(--surface);border-radius:16px;padding:28px 32px;
 }
 .overlay-text{font-size:14px;font-weight:500}
+.loc-live{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:12px;font-weight:600;color:var(--success);
+  background:var(--success-bg);padding:3px 10px;border-radius:99px;
+}
+.loc-live::before{
+  content:'';display:inline-block;width:7px;height:7px;
+  border-radius:50%;background:var(--success);
+  animation:loc-pulse 1.6s ease-in-out infinite;
+}
+@keyframes loc-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
 .success-overlay{
   position:fixed;inset:0;z-index:998;background:var(--surface);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -673,6 +684,9 @@ async function api(path, opts) {
 
 function forceLogout() {
   stopSSE();
+  stopLocationTracking();
+  sessionStorage.removeItem('loc_asked');
+  sessionStorage.removeItem('loc_granted');
   Store.clear();
   S = freshState();
   render({page:'login'});
@@ -797,6 +811,7 @@ function shell() {
       <div class="sb-user">
         <div class="sb-user-name">${esc(name)}</div>
         <div class="sb-user-role">${role}</div>
+        ${!S.isManager && _locWatcher !== null ? '<div style="margin-top:6px"><span class="loc-live">Jonli lokatsiya</span></div>' : ''}
       </div>
       <nav class="sb-nav">
         <button class="nav-item ${inTasks ? 'active' : ''}" data-act="page" data-page="tasks">
@@ -817,7 +832,7 @@ function shell() {
       <div class="mobile-header">
         <div class="mh-title">
           <h1 id="mh-t">Topshiriqlar</h1>
-          <p>${esc(name)} · ${role}</p>
+          <p>${esc(name)} · ${role}${!S.isManager && _locWatcher !== null ? ' &nbsp;<span class="loc-live">Jonli</span>' : ''}</p>
         </div>
         ${IS_TG ? '' : '<button class="btn btn-ghost btn-sm" data-act="logout">Chiqish</button>'}
       </div>
@@ -933,9 +948,11 @@ async function doLogin() {
     S.isManager = data.role === 'manager' || data.role === 'assistant_manager';
     S.amSector  = data.sector || null;
     S.user      = {first_name: data.name};
-    if (!S.isManager) startLocationTracking();
     startSSE();
-    if (await loadTasks()) render({page:'tasks'});
+    if (await loadTasks()) {
+      render({page:'tasks'});
+      if (!S.isManager) promptLiveLocation();
+    }
   } catch (e) {
     formError('lerr', 'Tarmoq xatosi: ' + e.message);
     if (btn) { btn.disabled = false; btn.textContent = 'Kirish'; }
@@ -1878,8 +1895,10 @@ function stopSSE() {
   if (_sse)          { _sse.close(); _sse = null; }
 }
 
-// ── Hodim tomonidan joylashuvni yuborish (fon) ───────────
-let _locWatcher = null, _locInterval = null, _lastLocSent = 0;
+// ── Hodim jonli lokatsiyasi ───────────────────────────────
+const LOC_DURATION_MS = 8 * 60 * 60 * 1000; // 8 soat
+
+let _locWatcher = null, _locInterval = null, _locStopTimer = null, _lastLocSent = 0;
 
 function startLocationTracking() {
   if (S.isManager || !navigator.geolocation) return;
@@ -1891,15 +1910,67 @@ function startLocationTracking() {
     _lastLocSent = now;
     _pushLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
   };
-  const onErr = () => {};
 
-  _locWatcher = navigator.geolocation.watchPosition(onPos, onErr,
+  _locWatcher = navigator.geolocation.watchPosition(onPos, () => {},
     { enableHighAccuracy: true, maximumAge: 15000 });
 
   _locInterval = setInterval(() => {
-    navigator.geolocation.getCurrentPosition(onPos, onErr,
+    navigator.geolocation.getCurrentPosition(onPos, () => {},
       { enableHighAccuracy: true, timeout: 8000 });
-  }, 90000);
+  }, 60000);
+
+  _locStopTimer = setTimeout(() => {
+    stopLocationTracking();
+    sessionStorage.removeItem('loc_granted');
+    render(); // indikatorni o'chirish
+  }, LOC_DURATION_MS);
+
+  render(); // indikatorni ko'rsatish
+}
+
+function stopLocationTracking() {
+  if (_locWatcher !== null) { navigator.geolocation.clearWatch(_locWatcher); _locWatcher = null; }
+  if (_locInterval  !== null) { clearInterval(_locInterval);  _locInterval  = null; }
+  if (_locStopTimer !== null) { clearTimeout(_locStopTimer);  _locStopTimer = null; }
+}
+
+function promptLiveLocation() {
+  if (S.isManager || !navigator.geolocation) return;
+  if (_locWatcher !== null) return;
+  if (sessionStorage.getItem('loc_granted')) { startLocationTracking(); return; }
+  if (sessionStorage.getItem('loc_asked'))   return; // rad etgan, qayta so'rash yo'q
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal" style="text-align:center;padding-bottom:28px">
+      <div style="font-size:52px;margin-bottom:10px">📍</div>
+      <div class="modal-title" style="font-size:19px;margin-bottom:8px">Jonli lokatsiya</div>
+      <p style="color:var(--hint);font-size:14px;line-height:1.6;margin-bottom:22px">
+        Ish vaqtida (8 soatgacha) joylashuvingiz kuzatiladi.<br>
+        Rahbar xaritada sizni ko'rishi mumkin.
+      </p>
+      <button id="_loc_allow" class="btn btn-primary btn-full" style="margin-bottom:10px;font-size:16px">
+        📍 Ulashishni boshlash
+      </button>
+      <button id="_loc_skip" class="btn btn-ghost btn-full" style="color:var(--hint)">Keyinroq</button>
+    </div>`;
+  document.getElementById('root').appendChild(modal);
+
+  document.getElementById('_loc_allow').onclick = () => {
+    modal.remove();
+    sessionStorage.setItem('loc_asked', '1');
+    navigator.geolocation.getCurrentPosition(
+      () => { sessionStorage.setItem('loc_granted', '1'); startLocationTracking(); },
+      () => { showAlert('Joylashuvga ruxsat berilmadi. Brauzer yoki telefon sozlamalaridan ruxsat bering.'); },
+      { enableHighAccuracy: true, timeout: 12000 }
+    );
+  };
+
+  document.getElementById('_loc_skip').onclick = () => {
+    modal.remove();
+    sessionStorage.setItem('loc_asked', '1');
+  };
 }
 
 async function _pushLocation(lat, lon, accuracy) {
@@ -2962,9 +3033,12 @@ if (tg && tg.BackButton) tg.BackButton.onClick(() => gotoPage('tasks'));
       if (me && me.user) {
         S.user      = me.user;
         S.isManager = !!me.is_manager;
-        if (!S.isManager) startLocationTracking();
         startSSE();
-        if (await loadTasks()) { render({page:'tasks'}); return; }
+        if (await loadTasks()) {
+          render({page:'tasks'});
+          if (!S.isManager) promptLiveLocation();
+          return;
+        }
       }
     } catch (_) { /* pastda login sahifasiga tushamiz */ }
     Store.clear();
