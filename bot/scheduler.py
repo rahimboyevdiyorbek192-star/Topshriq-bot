@@ -45,37 +45,46 @@ async def _check_deadlines(bot: Bot, db: Database, config: Config, userbot=None)
                 await db.mark_reminder_sent(task["id"], m)
 
 
+def _mention(e) -> str:
+    if e["username"]:
+        return f"@{e['username']}"
+    if e["tg_id"] > 0:
+        return f'<a href="tg://user?id={e["tg_id"]}">{e["full_name"]}</a>'
+    return e["full_name"]
+
+
 async def _send_reminder(
     bot: Bot, db: Database, config: Config, task, overdue: bool,
     userbot=None,
 ) -> None:
     target_sector = task["target_sector"] if "target_sector" in task.keys() else None
     employees = await db.list_employees(sector=target_sector)
-    submitted = await db.submitted_employee_ids(task["id"])
-    not_done  = [e for e in employees if e["tg_id"] not in submitted]
-    if not not_done:
+    fully_done, partial_ids = await db.get_task_done_partial_ids(task["id"])
+    all_done_ids = fully_done | partial_ids
+    emp_map = {e["tg_id"]: e for e in employees}
+
+    partial  = [e for e in employees if e["tg_id"] in partial_ids]
+    not_done = [e for e in employees if e["tg_id"] not in all_done_ids]
+    need_reminder = partial + not_done
+    if not need_reminder:
         return
 
     head = "🔴 <b>MUDDAT O'TDI</b>" if overdue else "⏰ <b>MUDDAT YAQIN</b>"
 
-    # Guruh eslatmasi
+    # Guruh eslatmasi: chala + bajarmaganlar, alohida guruhlarda ko'rsatiladi
     if config.execution_group_ids:
-        mentions = []
-        for e in not_done:
-            if e["username"]:
-                mentions.append(f"@{e['username']}")
-            elif e["tg_id"] > 0:
-                mentions.append(
-                    f'<a href="tg://user?id={e["tg_id"]}">{e["full_name"]}</a>'
-                )
-            else:
-                mentions.append(e["full_name"])
+        parts = []
+        if partial:
+            mentions = ", ".join(_mention(e) for e in partial)
+            parts.append(f"⏳ Chala bajarganlar ({len(partial)} ta): {mentions}")
+        if not_done:
+            mentions = ", ".join(_mention(e) for e in not_done)
+            parts.append(f"❌ Bajarmaganlar ({len(not_done)} ta): {mentions}")
         text = (
             f"{head} — Topshiriq #{task['id']}: {task['title']}\n"
             f"🗓 {format_deadline(task['deadline'], config.tz)} "
             f"{humanize_left(task['deadline'], config.tz)}\n\n"
-            f"❗️ Hali bajarmaganlar ({len(not_done)} ta):\n"
-            + ", ".join(mentions)
+            + "\n".join(parts)
         )
         for gid in config.execution_group_ids:
             try:
@@ -83,18 +92,32 @@ async def _send_reminder(
             except Exception as exc:
                 logger.warning("Guruh eslatmasi yuborilmadi (task %s, chat %s): %s", task["id"], gid, exc)
 
-    # Bot orqali shaxsiy eslatma (eski xabar o'chirilib yangi yuboriladi)
-    head_private = "⏰ Salom! Topshiriq muddati yaqinlashdi." if not overdue else "🔴 Topshiriq muddati o'tib ketdi!"
-    private_text = (
-        f"{head_private}\n\n"
-        f"📋 <b>#{task['id']}: {task['title']}</b>\n"
-        f"🗓 Muddat: {format_deadline(task['deadline'], config.tz)}\n"
-        f"{humanize_left(task['deadline'], config.tz)}\n\n"
-        "Iltimos, ishingizni tezroq sayt orqali topshiring."
-    )
+    # Bot orqali shaxsiy eslatma
+    head_overdue = "🔴 Topshiriq muddati o'tib ketdi!"
+    head_soon    = "⏰ Salom! Topshiriq muddati yaqinlashdi."
+
+    for e in partial:
+        if e["tg_id"] <= 0:
+            continue
+        private_text = (
+            f"{'🔴' if overdue else '⏳'} Topshiriq chala qolgan!\n\n"
+            f"📋 <b>#{task['id']}: {task['title']}</b>\n"
+            f"🗓 Muddat: {format_deadline(task['deadline'], config.tz)}\n"
+            f"{humanize_left(task['deadline'], config.tz)}\n\n"
+            "Barcha kerakli fayllarni yuklang — topshiriq hali to'liq hisoblanmaydi."
+        )
+        await send_and_clean(bot, db, e["tg_id"], private_text)
+
     for e in not_done:
         if e["tg_id"] <= 0:
             continue
+        private_text = (
+            f"{head_overdue if overdue else head_soon}\n\n"
+            f"📋 <b>#{task['id']}: {task['title']}</b>\n"
+            f"🗓 Muddat: {format_deadline(task['deadline'], config.tz)}\n"
+            f"{humanize_left(task['deadline'], config.tz)}\n\n"
+            "Iltimos, ishingizni tezroq sayt orqali topshiring."
+        )
         await send_and_clean(bot, db, e["tg_id"], private_text)
 
 

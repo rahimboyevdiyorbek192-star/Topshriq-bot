@@ -263,6 +263,21 @@ textarea.form-input{resize:vertical;min-height:90px}
   background:var(--danger-bg);color:var(--danger);font-size:13px;
 }
 .form-error.show{display:block}
+.assign-toggle{display:flex;gap:8px;margin-top:2px}
+.assign-toggle-btn{
+  flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;
+  background:var(--bg);color:var(--hint);font-size:13px;font-weight:600;
+  cursor:pointer;transition:all .15s;text-align:center;
+}
+.assign-toggle-btn.active{border-color:var(--primary);background:var(--primary-bg);color:var(--primary)}
+.emp-checklist{max-height:220px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:6px 4px}
+.emp-check-item{
+  display:flex;align-items:center;gap:10px;padding:7px 8px;cursor:pointer;
+  border-bottom:1px solid var(--border);font-size:13px;
+}
+.emp-check-item:last-child{border-bottom:none}
+.emp-check-item input[type=checkbox]{accent-color:var(--primary);width:16px;height:16px;flex-shrink:0}
+.emp-check-item:hover{background:var(--bg);border-radius:6px}
 .pw-wrap{position:relative}
 .pw-wrap .form-input{padding-right:42px}
 .pw-eye{
@@ -752,6 +767,7 @@ function updatePage() {
 function gotoPage(page, extra) {
   if (page === 'tasks') render({page:'tasks', activeTask:null, detail:null, selFiles:[], note:''});
   else if (page === 'employees') loadEmployees().then(() => render({page:'employees'}));
+  else if (page === 'create-task') loadEmployees().then(() => render({page:'create-task'}));
   else if (page === 'track-emp' && extra) render({page:'track-emp', ...extra});
   else if (page === 'history') render({page:'history'});
   else if (page === 'kpi') render({page:'kpi', kpiView:'summary', kpiEmpId:null, kpiEmpData:null});
@@ -1013,9 +1029,12 @@ function taskListPage() {
     const creatorBadge = t.creator_name
       ? `<span class="badge" style="background:var(--primary-bg);color:var(--primary);font-size:10px;margin-left:4px">🔵 ${esc(t.creator_name)}</span>`
       : '';
+    const assignBadge = (t.assignee_ids && t.assignee_ids.length)
+      ? `<span class="badge" style="background:#f0fdf4;color:#166534;font-size:10px;margin-left:4px">🎯 Tayinlangan</span>`
+      : '';
     return `
     <div class="task-card" data-act="task" data-id="${t.id}">
-      <div class="tc-head"><span class="tc-num">#${t.id}</span>${badge}${creatorBadge}</div>
+      <div class="tc-head"><span class="tc-num">#${t.id}</span>${badge}${creatorBadge}${assignBadge}</div>
       <div class="tc-title">${esc(t.title)}</div>
       <div class="tc-meta">
         <span>📅 ${esc(dl.date)}</span>
@@ -1176,17 +1195,31 @@ function mgrDetailPage() {
   const t = S.activeTask;
   if (!t) return '<div class="center-box"><p>Topshiriq topilmadi</p></div>';
 
-  const done = t.done_count, total = t.total_count, p = pct(done, total);
-  const r = 42, circ = 2 * Math.PI * r, fill = circ * (total ? done / total : 0);
+  const reqFiles = t.required_files || 0;
+  const total = t.total_count;
+  // Compute fully done vs partial from detail if available
+  let fullyDone = t.done_count, partialDone = 0;
+  if (S.detail && S.detail.submissions && reqFiles > 0) {
+    fullyDone = S.detail.submissions.filter(s => (s.file_count||0) >= reqFiles).length;
+    partialDone = S.detail.submissions.filter(s => (s.file_count||0) > 0 && (s.file_count||0) < reqFiles).length;
+  }
+  const p = pct(fullyDone, total);
+  const r = 42, circ = 2 * Math.PI * r;
+  const fillDone    = circ * (total ? fullyDone / total : 0);
+  const fillPartial = circ * (total ? partialDone / total : 0);
+  const rotPartial  = -90 + (fullyDone / (total || 1)) * 360;
 
   const donut = `
     <svg width="112" height="112" viewBox="0 0 112 112" role="img" aria-label="${p}% bajarildi">
       <circle cx="56" cy="56" r="${r}" fill="none" stroke="var(--border)" stroke-width="12"/>
+      ${partialDone > 0 ? `<circle cx="56" cy="56" r="${r}" fill="none" stroke="#f59e0b" stroke-width="12"
+        stroke-dasharray="${fillPartial.toFixed(1)} ${(circ-fillPartial).toFixed(1)}"
+        stroke-linecap="round" transform="rotate(${rotPartial.toFixed(1)},56,56)"/>` : ''}
       <circle cx="56" cy="56" r="${r}" fill="none" stroke="#22c55e" stroke-width="12"
-        stroke-dasharray="${fill.toFixed(1)} ${(circ - fill).toFixed(1)}"
+        stroke-dasharray="${fillDone.toFixed(1)} ${(circ - fillDone).toFixed(1)}"
         stroke-linecap="round" transform="rotate(-90,56,56)"/>
       <text x="56" y="52" text-anchor="middle" font-size="20" font-weight="800" fill="var(--text)">${p}%</text>
-      <text x="56" y="68" text-anchor="middle" font-size="10" fill="var(--hint)">bajarildi</text>
+      <text x="56" y="68" text-anchor="middle" font-size="10" fill="var(--hint)">to'liq</text>
     </svg>`;
 
   let subs;
@@ -1257,8 +1290,9 @@ function mgrDetailPage() {
       <div class="donut-wrap">
         ${donut}
         <div class="donut-legend">
-          <div class="legend-item"><span class="legend-dot" style="background:#22c55e"></span><span>${done} ta topshirdi</span></div>
-          <div class="legend-item"><span class="legend-dot" style="background:var(--border)"></span><span>${total - done} ta topshirmadi</span></div>
+          <div class="legend-item"><span class="legend-dot" style="background:#22c55e"></span><span>✅ ${fullyDone} ta to'liq bajardi</span></div>
+          ${partialDone > 0 ? `<div class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span><span>⏳ ${partialDone} ta chala bajardi</span></div>` : ''}
+          <div class="legend-item"><span class="legend-dot" style="background:var(--border)"></span><span>❌ ${total - fullyDone - partialDone} ta bajarmadilar</span></div>
           <div class="legend-item"><span class="legend-dot" style="background:var(--primary)"></span><span>Jami: ${total} ta xodim</span></div>
         </div>
       </div>
@@ -1275,7 +1309,7 @@ function mgrDetailPage() {
     </div>
 
     <div class="sec-card">
-      <div class="sec-title">✅ Topshirganlar (${done}/${total})</div>
+      <div class="sec-title">📋 Topshirganlar (${fullyDone + partialDone}/${total})${partialDone ? ` · ⏳ ${partialDone} ta chala` : ''}</div>
       ${subs}
     </div>
     ${S.amSector !== null ? amSubmitSection() : ''}
@@ -1696,6 +1730,18 @@ function createTaskPage() {
         <div class="form-hint">Hodim shu qadar fayl yuklasa topshiriq bajarildi hisoblanadi (0 = cheklov yo'q)</div>
       </div>
       <div class="form-group">
+        <label class="form-label">Kimga tayinlash</label>
+        <div class="assign-toggle" id="ct-assign-toggle">
+          <button class="assign-toggle-btn active" data-val="all">👥 Barcha hodimlar</button>
+          <button class="assign-toggle-btn" data-val="specific">🎯 Alohida hodimlar</button>
+        </div>
+      </div>
+      <div class="form-group" id="ct-assignee-wrap" style="display:none">
+        <label class="form-label">Hodimlarni tanlang</label>
+        <div class="emp-checklist" id="ct-emp-list"></div>
+        <div class="form-hint" id="ct-assign-hint"></div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Namuna fayllar (ixtiyoriy)</label>
         <div class="upload-area" id="ct-uarea" style="padding:14px 12px">
           <input type="file" id="ct-finput" multiple style="display:none"
@@ -1722,6 +1768,7 @@ function initDeadlineField() {
 
   // Namuna fayl yuklash maydonini sozlash
   S.ctFiles = [];
+  S.ctAssignees = [];
   const area   = document.getElementById('ct-uarea');
   const finput = document.getElementById('ct-finput');
   if (area && finput) {
@@ -1732,6 +1779,47 @@ function initDeadlineField() {
       renderCtFiles();
     });
   }
+
+  // Tayinlash toggle
+  const toggle = document.getElementById('ct-assign-toggle');
+  if (toggle) {
+    toggle.querySelectorAll('.assign-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        toggle.querySelectorAll('.assign-toggle-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const wrap = document.getElementById('ct-assignee-wrap');
+        if (wrap) wrap.style.display = btn.dataset.val === 'specific' ? '' : 'none';
+        if (btn.dataset.val === 'specific') renderCtEmpList();
+      });
+    });
+  }
+}
+
+function renderCtEmpList() {
+  const wrap = document.getElementById('ct-emp-list');
+  const hint = document.getElementById('ct-assign-hint');
+  if (!wrap) return;
+  const emps = (S.employees || []).filter(e => e.active && !e.is_assistant_manager);
+  if (!emps.length) {
+    wrap.innerHTML = '<div class="form-hint" style="padding:8px">Faol xodimlar yo\'q</div>';
+    return;
+  }
+  wrap.innerHTML = emps.map(e => `
+    <label class="emp-check-item">
+      <input type="checkbox" class="emp-check" data-id="${e.tg_id}" ${(S.ctAssignees||[]).includes(e.tg_id) ? 'checked' : ''}>
+      <span>${esc(e.full_name)}${e.position ? `<span class="text-hint" style="font-size:11px;margin-left:4px">(${esc(e.position)})</span>` : ''}</span>
+    </label>`).join('');
+  wrap.querySelectorAll('.emp-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const id = parseInt(cb.dataset.id, 10);
+      if (cb.checked) {
+        if (!(S.ctAssignees || []).includes(id)) S.ctAssignees = [...(S.ctAssignees||[]), id];
+      } else {
+        S.ctAssignees = (S.ctAssignees||[]).filter(x => x !== id);
+      }
+      if (hint) hint.textContent = S.ctAssignees.length ? `${S.ctAssignees.length} ta hodim tanlandi` : '';
+    });
+  });
 }
 
 function renderCtFiles() {
@@ -1757,6 +1845,11 @@ async function doCreateTask() {
 
   if (!title) { formError('ct-err', 'Topshiriq nomini kiriting'); return; }
 
+  const useSpecific = document.querySelector('#ct-assign-toggle .assign-toggle-btn.active')?.dataset.val === 'specific';
+  if (useSpecific && (S.ctAssignees || []).length === 0) {
+    formError('ct-err', 'Kamida bitta hodimni tanlang'); return;
+  }
+
   if (btn) { btn.disabled = true; btn.textContent = 'Saqlanmoqda…'; }
   formError('ct-err', '');
   try {
@@ -1765,12 +1858,16 @@ async function doCreateTask() {
     if (desc) fd.append('description', desc);
     if (dlRaw) fd.append('deadline', localToIso(dlRaw));
     fd.append('required_files', String(Math.max(0, parseInt(reqRaw, 10) || 0)));
+    if (useSpecific && S.ctAssignees && S.ctAssignees.length) {
+      fd.append('assignees', JSON.stringify(S.ctAssignees));
+    }
     (S.ctFiles || []).forEach(f => fd.append('files[]', f, f.name));
 
     const data = await api('/api/tasks', {method:'POST', body: fd});
     if (!data) return;
     if (data.error) throw new Error(data.error);
     S.ctFiles = [];
+    S.ctAssignees = [];
     if (await loadTasks()) { toast('✅ Topshiriq yaratildi!'); render({page:'tasks'}); }
   } catch (e) {
     formError('ct-err', e.message);
@@ -2582,7 +2679,7 @@ function kpiQuarterCard(qNum, qData, showMonths) {
           </div>
           <span class="kpi-month-pct ${mg.cls}">${mp!==null?mp+'%':'—'}</span>
         </div>
-        <span class="kpi-month-cnt">${mv.done}/${mv.total}</span>
+        <span class="kpi-month-cnt">${mv.done}/${mv.total}${mv.partial ? `·⏳${mv.partial}` : ''}</span>
       </div>`;
     }).join('');
   }
@@ -2599,7 +2696,7 @@ function kpiQuarterCard(qNum, qData, showMonths) {
     ${empty ? '<div class="text-hint text-sm" style="margin-top:6px">Bu chorakda topshiriq yo\'q</div>' : `
       <div class="prog-wrap" style="margin-top:8px">
         <div class="prog-bar"><div class="prog-fill ${pgCls(p||0)}" style="width:${p||0}%"></div></div>
-        <div class="prog-text">${qData.done} ta / ${qData.total} ta topshiriq bajarildi</div>
+        <div class="prog-text">✅ ${qData.done} ta to'liq bajarildi / ${qData.total} ta${qData.partial ? ` · ⏳ ${qData.partial} ta chala` : ''}</div>
       </div>${monthsHtml}`}
   </div>`;
 }

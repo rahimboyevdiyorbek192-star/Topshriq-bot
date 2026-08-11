@@ -324,6 +324,7 @@ async def _announce_task(
     deadline_iso: str | None,
     files: list[tuple[str, str | None, str]],
     target_sector: int | None = None,
+    assignee_ids: list[int] | None = None,
 ) -> None:
     caption = (
         f"📢 <b>YANGI TOPSHIRIQ #{task_id}</b>\n\n"
@@ -336,6 +337,21 @@ async def _announce_task(
         f"\n\n➡️ Bajarib bo'lgach, <b>shu xabarga reply qilib</b> ishingizni yuboring "
         f"(yoki xabar boshida <code>#T{task_id}</code> deb yozing)."
     )
+
+    # Faqat tayinlangan xodimlar uchun @mention qo'shamiz
+    if assignee_ids:
+        employees_all = await db.list_employees(active_only=True, sector=target_sector)
+        assignee_set = set(assignee_ids)
+        assignees = [e for e in employees_all if e["tg_id"] in assignee_set]
+        if assignees:
+            mentions = []
+            for e in assignees:
+                if e["username"]:
+                    mentions.append(f"@{e['username']}")
+                elif e["tg_id"] > 0:
+                    mentions.append(f'<a href="tg://user?id={e["tg_id"]}">{e["full_name"]}</a>')
+            if mentions:
+                caption += "\n\n👥 Tayinlangan: " + ", ".join(mentions)
 
     announce_msg = None
     for gid in config.execution_group_ids:
@@ -368,7 +384,7 @@ async def _announce_task(
     if announce_msg:
         await db.set_announce_msg(task_id, announce_msg.message_id)
 
-    # Har bir xodimning shaxsiy chatiga yangi topshiriq haqida xabar yuborish
+    # Shaxsiy DM: faqat tayinlangan xodimlar (yoki sektordagi barcha xodimlar)
     dm_text = f"📢 <b>Yangi topshiriq #{task_id}</b>\n\n<b>{title}</b>\n"
     if body:
         dm_text += f"\n{body}\n"
@@ -376,9 +392,12 @@ async def _announce_task(
     dm_text += "\n\n📱 Saytga kirib topshiriqni ko'ring va bajarib bo'lgach faylingizni yuboring."
 
     employees = await db.list_employees(active_only=True, sector=target_sector)
+    assignee_set = set(assignee_ids) if assignee_ids else None
     for emp in employees:
         if emp["tg_id"] <= 0:
             continue
+        if assignee_set is not None and emp["tg_id"] not in assignee_set:
+            continue  # Tayinlanmagan xodimga DM yubormaymiz
         await send_and_clean(bot, db, emp["tg_id"], dm_text)
 
 

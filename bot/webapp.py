@@ -512,7 +512,9 @@ async def handle_tasks(request: web.Request) -> web.Response:
 
     db: Database = request.app["db"]
     user_id      = user["id"]
-    tasks        = await db.list_open_tasks(sector=am_sector)
+    # Xodimlar faqat o'zlariga tayinlangan topshiriqlarni ko'radi
+    emp_user_id  = None if is_manager else user_id
+    tasks        = await db.list_open_tasks(sector=am_sector, user_id=emp_user_id)
     total_emp    = await db.count_employees(sector=am_sector)
     result       = []
 
@@ -527,6 +529,7 @@ async def handle_tasks(request: web.Request) -> web.Response:
             can_submit and user_id in submitted_ids and (req_files == 0 or my_file_count >= req_files)
         )
 
+        assignees = await db.get_task_assignees(t["id"])
         result.append({
             "id":              t["id"],
             "title":           t["title"],
@@ -538,6 +541,7 @@ async def handle_tasks(request: web.Request) -> web.Response:
             "total_count":     total_emp,
             "required_files":  req_files,
             "my_file_count":   my_file_count,
+            "assignee_ids":    assignees,
             "files": [
                 {
                     "file_id":   f["file_id"],
@@ -581,6 +585,7 @@ async def handle_task_detail(request: web.Request) -> web.Response:
     total_emp    = await db.count_employees(sector=am_sector)
     task_files   = await db.get_task_files(task_id)
     file_counts  = await db.get_task_file_counts(task_id)
+    assignees    = await db.get_task_assignees(task_id)
 
     return _json({
         "task": {
@@ -589,6 +594,7 @@ async def handle_task_detail(request: web.Request) -> web.Response:
             "description":    task["description"] or "",
             "deadline":       task["deadline"] or "",
             "required_files": task["required_files"] if "required_files" in task.keys() else 0,
+            "assignee_ids":   assignees,
         },
         "submissions": [
             {
@@ -936,6 +942,7 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
     description: str | None = None
     deadline: str | None = None
     required_files: int = 0
+    assignee_ids: list[int] = []
     pending: list[tuple[str, bytes]] = []  # (fname, data)
 
     try:
@@ -955,6 +962,16 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
                         required_files = max(0, int(raw))
                     except (TypeError, ValueError):
                         required_files = 0
+                elif field.name in ("assignees", "assignees[]"):
+                    raw = (await field.read(decode=True)).decode("utf-8", "ignore").strip()
+                    try:
+                        val = json.loads(raw)
+                        if isinstance(val, list):
+                            assignee_ids = [int(x) for x in val if str(x).lstrip("-").isdigit()]
+                        elif str(raw).lstrip("-").isdigit():
+                            assignee_ids.append(int(raw))
+                    except Exception:
+                        pass
                 elif field.name in ("file", "files", "files[]"):
                     fdata = await field.read()
                     if fdata:
@@ -968,6 +985,9 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
                 required_files = max(0, int(data.get("required_files") or 0))
             except (TypeError, ValueError):
                 required_files = 0
+            raw_assignees = data.get("assignees") or []
+            if isinstance(raw_assignees, list):
+                assignee_ids = [int(x) for x in raw_assignees if str(x).lstrip("-").isdigit()]
     except Exception:
         return _json({"error": "So'rovni o'qib bo'lmadi"}, 400)
 
@@ -991,6 +1011,7 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
         required_files=required_files,
         target_sector=am_sector,
         creator_name=creator_name,
+        assignee_ids=assignee_ids or None,
     )
 
     # Namuna fayllarni Telegram'ga yuborish — file_id olish uchun menejerga yuboriladi
@@ -1027,6 +1048,19 @@ async def handle_tasks_create(request: web.Request) -> web.Response:
             ann_text += f"\n📝 {description[:200]}"
         if required_files:
             ann_text += f"\n📂 Talab: {required_files} ta fayl"
+        if assignee_ids:
+            emp_rows = await db.list_employees(active_only=True, sector=am_sector)
+            aset = set(assignee_ids)
+            mentions = []
+            for e in emp_rows:
+                if e["tg_id"] not in aset:
+                    continue
+                if e["username"]:
+                    mentions.append(f"@{e['username']}")
+                elif e["tg_id"] > 0:
+                    mentions.append(f'<a href="tg://user?id={e["tg_id"]}">{e["full_name"]}</a>')
+            if mentions:
+                ann_text += "\n👥 Tayinlangan: " + ", ".join(mentions)
         for gid in config.execution_group_ids:
             try:
                 if len(task_files_list) == 1:

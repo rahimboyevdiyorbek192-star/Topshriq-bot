@@ -181,6 +181,14 @@ class Database:
                 expires_at TEXT NOT NULL
             )
         """)
+        await self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS task_assignees (
+                task_id INTEGER NOT NULL,
+                tg_id   INTEGER NOT NULL,
+                PRIMARY KEY (task_id, tg_id),
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+            )
+        """)
         await self._conn.commit()
 
     async def close(self) -> None:
@@ -338,6 +346,7 @@ class Database:
         required_files: int = 0,
         target_sector: int | None = None,
         creator_name: str | None = None,
+        assignee_ids: list[int] | None = None,
     ) -> int:
         cur = await self.conn.execute(
             """
@@ -352,8 +361,11 @@ class Database:
                 target_sector, creator_name, datetime.now().isoformat(),
             ),
         )
+        task_id = cur.lastrowid
+        if assignee_ids:
+            await self._set_task_assignees(task_id, assignee_ids)
         await self.conn.commit()
-        return cur.lastrowid
+        return task_id
 
     async def add_task_file(
         self, task_id: int, file_id: str, file_name: str | None, file_kind: str
@@ -386,26 +398,27 @@ class Database:
         )
         return await cur.fetchone()
 
-    async def list_open_tasks(self, sector: int | None = None) -> list[aiosqlite.Row]:
+    async def list_open_tasks(
+        self, sector: int | None = None, user_id: int | None = None
+    ) -> list[aiosqlite.Row]:
         """Ochiq topshiriqlar. Muddati o'tganlar ko'rsatilmaydi (Tarix da ko'rinadi).
-        sector berilsa — faqat shu sektor va umumiy (NULL) topshiriqlar."""
+        sector berilsa — faqat shu sektor va umumiy (NULL) topshiriqlar.
+        user_id berilsa — faqat shu xodimga tayinlangan (yoki umumiy) topshiriqlar."""
         from datetime import datetime as _dt
         now = _dt.now().isoformat()
+        conds = ["status = 'open'", "(deadline IS NULL OR deadline >= ?)"]
+        params: list = [now]
         if sector is not None:
-            cur = await self.conn.execute(
-                """SELECT * FROM tasks WHERE status = 'open'
-                   AND (target_sector = ? OR target_sector IS NULL)
-                   AND (deadline IS NULL OR deadline >= ?)
-                   ORDER BY id DESC""",
-                (sector, now),
+            conds.append("(target_sector = ? OR target_sector IS NULL)")
+            params.append(sector)
+        if user_id is not None:
+            conds.append(
+                "(NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = tasks.id)"
+                " OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = tasks.id AND ta.tg_id = ?))"
             )
-        else:
-            cur = await self.conn.execute(
-                """SELECT * FROM tasks WHERE status = 'open'
-                   AND (deadline IS NULL OR deadline >= ?)
-                   ORDER BY id DESC""",
-                (now,),
-            )
+            params.append(user_id)
+        q = "SELECT * FROM tasks WHERE " + " AND ".join(conds) + " ORDER BY id DESC"
+        cur = await self.conn.execute(q, params)
         return list(await cur.fetchall())
 
     async def list_all_tasks(self, sector: int | None = None) -> list[aiosqlite.Row]:
@@ -806,6 +819,44 @@ class Database:
         row = await cur.fetchone()
         return (row["total"] or 0) if row else 0
 
+    # ---------- Topshiriq tayinlash (assignees) ----------
+
+    async def _set_task_assignees(self, task_id: int, assignee_ids: list[int]) -> None:
+        """task_assignees jadvalini yangilaydi (avvalgilarini o'chirib yangi yozadi)."""
+        await self.conn.execute("DELETE FROM task_assignees WHERE task_id = ?", (task_id,))
+        for tid in assignee_ids:
+            await self.conn.execute(
+                "INSERT OR IGNORE INTO task_assignees (task_id, tg_id) VALUES (?, ?)",
+                (task_id, tid),
+            )
+
+    async def set_task_assignees(self, task_id: int, assignee_ids: list[int]) -> None:
+        await self._set_task_assignees(task_id, assignee_ids)
+        await self.conn.commit()
+
+    async def get_task_assignees(self, task_id: int) -> list[int]:
+        cur = await self.conn.execute(
+            "SELECT tg_id FROM task_assignees WHERE task_id = ?", (task_id,)
+        )
+        return [row["tg_id"] for row in await cur.fetchall()]
+
+    # ---------- Bajarilish holati (to'liq / qisman) ----------
+
+    async def get_task_done_partial_ids(self, task_id: int) -> tuple[set[int], set[int]]:
+        """Topshiriq bo'yicha to'liq va qisman bajargan xodimlar.
+        Qaytaradi: (fully_done_ids, partial_ids)."""
+        task = await self.get_task(task_id)
+        req = (task["required_files"] if task and "required_files" in task.keys() else 0) or 0
+        file_counts = await self.get_task_file_counts(task_id)
+        fully_done: set[int] = set()
+        partial: set[int] = set()
+        for eid, cnt in file_counts.items():
+            if req == 0 or cnt >= req:
+                fully_done.add(eid)
+            else:
+                partial.add(eid)
+        return fully_done, partial
+
     async def get_task_file_counts(self, task_id: int) -> dict[int, int]:
         """task_id bo'yicha har bir xodim yuklagan fayllar sonini qaytaradi."""
         cur = await self.conn.execute(
@@ -926,20 +977,30 @@ class Database:
     # ---------- KPI ----------
 
     async def get_employee_kpi(self, employee_id: int, year: int) -> dict:
-        """Bir xodimning yillik KPI ko'rsatkichlari, choraklar bo'yicha."""
+        """Bir xodimning yillik KPI ko'rsatkichlari, choraklar bo'yicha.
+        done=to'liq bajarilgan (required_files bajarilgan), partial=chala bajarilgan."""
         cur = await self.conn.execute(
             """
-            SELECT t.id, t.created_at,
-                   CASE WHEN s.employee_id IS NOT NULL THEN 1 ELSE 0 END AS submitted
+            SELECT t.id, t.created_at, t.required_files,
+                   CASE
+                     WHEN s.employee_id IS NULL THEN 0
+                     WHEN COALESCE(t.required_files, 0) = 0 THEN 2
+                     WHEN (
+                       (CASE WHEN s.file_id IS NOT NULL OR s.local_path IS NOT NULL THEN 1 ELSE 0 END) +
+                       (SELECT COUNT(*) FROM submission_files sf
+                        WHERE sf.task_id = t.id AND sf.employee_id = ?)
+                     ) >= t.required_files THEN 2
+                     ELSE 1
+                   END AS status
             FROM tasks t
             LEFT JOIN submissions s ON s.task_id = t.id AND s.employee_id = ?
             WHERE strftime('%Y', t.created_at) = ?
             """,
-            (employee_id, str(year)),
+            (employee_id, employee_id, str(year)),
         )
         rows = list(await cur.fetchall())
 
-        quarters: dict = {q: {"total": 0, "done": 0, "months": {}} for q in range(1, 5)}
+        quarters: dict = {q: {"total": 0, "done": 0, "partial": 0, "months": {}} for q in range(1, 5)}
         for row in rows:
             try:
                 d = datetime.fromisoformat(row["created_at"])
@@ -948,23 +1009,38 @@ class Database:
             q = (d.month - 1) // 3 + 1
             m = d.month
             quarters[q]["total"] += 1
-            if row["submitted"]:
+            if row["status"] == 2:
                 quarters[q]["done"] += 1
+            elif row["status"] == 1:
+                quarters[q]["partial"] += 1
             mq = quarters[q]["months"]
             if m not in mq:
-                mq[m] = {"total": 0, "done": 0}
+                mq[m] = {"total": 0, "done": 0, "partial": 0}
             mq[m]["total"] += 1
-            if row["submitted"]:
+            if row["status"] == 2:
                 mq[m]["done"] += 1
+            elif row["status"] == 1:
+                mq[m]["partial"] += 1
         return quarters
 
     async def get_all_employees_kpi_summary(self, year: int) -> list:
-        """Barcha faol xodimlarning yillik KPI xulosasi, choraklar bo'yicha."""
+        """Barcha faol xodimlarning yillik KPI xulosasi, choraklar bo'yicha.
+        done=to'liq, partial=chala bajarilgan."""
         cur = await self.conn.execute(
             """
             SELECT e.tg_id, e.full_name, e.username,
                    CAST(strftime('%m', t.created_at) AS INTEGER) AS month,
-                   CASE WHEN s.employee_id IS NOT NULL THEN 1 ELSE 0 END AS submitted
+                   t.required_files,
+                   CASE
+                     WHEN s.employee_id IS NULL THEN 0
+                     WHEN COALESCE(t.required_files, 0) = 0 THEN 2
+                     WHEN (
+                       (CASE WHEN s.file_id IS NOT NULL OR s.local_path IS NOT NULL THEN 1 ELSE 0 END) +
+                       (SELECT COUNT(*) FROM submission_files sf
+                        WHERE sf.task_id = t.id AND sf.employee_id = e.tg_id)
+                     ) >= t.required_files THEN 2
+                     ELSE 1
+                   END AS status
             FROM employees e
             CROSS JOIN tasks t
             LEFT JOIN submissions s ON s.task_id = t.id AND s.employee_id = e.tg_id
@@ -983,12 +1059,14 @@ class Database:
                     "id": eid,
                     "name": row["full_name"],
                     "username": row["username"],
-                    "quarters": {q: {"total": 0, "done": 0} for q in range(1, 5)},
+                    "quarters": {q: {"total": 0, "done": 0, "partial": 0} for q in range(1, 5)},
                 }
             q = (row["month"] - 1) // 3 + 1
             emp_map[eid]["quarters"][q]["total"] += 1
-            if row["submitted"]:
+            if row["status"] == 2:
                 emp_map[eid]["quarters"][q]["done"] += 1
+            elif row["status"] == 1:
+                emp_map[eid]["quarters"][q]["partial"] += 1
 
         def avg_pct(e: dict) -> float:
             qs = e["quarters"]
