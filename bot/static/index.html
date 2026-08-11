@@ -684,7 +684,6 @@ async function api(path, opts) {
 
 function forceLogout() {
   stopSSE();
-  stopLocationTracking();
   Store.clear();
   S = freshState();
   render({page:'login'});
