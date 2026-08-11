@@ -7,6 +7,7 @@ import hmac as _hmac
 import io
 import json
 import logging
+import time
 import urllib.parse
 import uuid
 import zipfile
@@ -23,6 +24,49 @@ from .utils.deadline import format_deadline
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+# ── Login urinishlari cheklovi ────────────────────────────
+class _LoginRateLimiter:
+    """10 marta xato parol → 15 daqiqa bloklash (xotira ichida)."""
+
+    MAX_ATTEMPTS = 10
+    BLOCK_SECONDS = 15 * 60  # 15 daqiqa
+
+    def __init__(self) -> None:
+        self._attempts: dict[str, list[float]] = {}  # ip → [timestamp, ...]
+        self._blocked:  dict[str, float]       = {}  # ip → unblock_at
+
+    def _cleanup(self, ip: str, now: float) -> None:
+        if ip in self._blocked and now >= self._blocked[ip]:
+            del self._blocked[ip]
+        if ip in self._attempts:
+            self._attempts[ip] = [t for t in self._attempts[ip] if now - t < self.BLOCK_SECONDS]
+            if not self._attempts[ip]:
+                del self._attempts[ip]
+
+    def is_blocked(self, ip: str) -> tuple[bool, int]:
+        """(bloklanganmi, qolgan soniyalar)"""
+        now = time.monotonic()
+        self._cleanup(ip, now)
+        if ip in self._blocked:
+            remaining = int(self._blocked[ip] - now)
+            return True, max(remaining, 0)
+        return False, 0
+
+    def record_failure(self, ip: str) -> None:
+        now = time.monotonic()
+        self._attempts.setdefault(ip, []).append(now)
+        if len(self._attempts[ip]) >= self.MAX_ATTEMPTS:
+            self._blocked[ip] = now + self.BLOCK_SECONDS
+            del self._attempts[ip]
+            logger.warning("Login bloklandi: ip=%s (%s marta xato)", ip, self.MAX_ATTEMPTS)
+
+    def record_success(self, ip: str) -> None:
+        self._attempts.pop(ip, None)
+
+
+_login_limiter = _LoginRateLimiter()
 
 
 # ── Parol tekshiruvi ───────────────────────────────────────
@@ -295,6 +339,13 @@ async def handle_index(request: web.Request) -> web.Response:
 # ── Auth ───────────────────────────────────────────────────
 
 async def handle_login(request: web.Request) -> web.Response:
+    # Rate-limit tekshiruvi
+    client_ip = request.headers.get("X-Forwarded-For", request.remote or "").split(",")[0].strip()
+    blocked, remaining = _login_limiter.is_blocked(client_ip)
+    if blocked:
+        mins = (remaining + 59) // 60
+        return _json({"error": f"Juda ko'p urinish. {mins} daqiqadan so'ng qayta urinib ko'ring."}, 429)
+
     try:
         data = await request.json()
     except Exception:
@@ -323,21 +374,26 @@ async def handle_login(request: web.Request) -> web.Response:
         if not config.webapp_manager_password:
             return _json({"error": "Rahbar paroli sozlanmagan"}, 500)
         if not _check_manager_password(password, config.webapp_manager_password):
+            _login_limiter.record_failure(client_ip)
             return _json({"error": "Noto'g'ri parol"}, 401)
+        _login_limiter.record_success(client_ip)
         token = await db.create_web_session(tg_id=0, is_manager=True)
         return _json({"ok": True, "token": token, "role": "manager", "name": "Rahbar"})
 
     # Xodim tekshiruvi
     emp = await db.get_employee_by_login_phone(phone)
     if not emp:
+        _login_limiter.record_failure(client_ip)
         return _json({"error": "Bunday telefon raqam topilmadi"}, 401)
     if not emp["password_hash"]:
         return _json({"error": "Parol o'rnatilmagan, rahbarga murojaat qiling"}, 401)
     if not Database.verify_password(password, emp["password_hash"]):
+        _login_limiter.record_failure(client_ip)
         return _json({"error": "Noto'g'ri parol"}, 401)
     if not emp["active"]:
         return _json({"error": "Hisobingiz faol emas"}, 403)
 
+    _login_limiter.record_success(client_ip)
     is_mgr = config.is_manager(emp["tg_id"])
     am_sector: int | None = None
     if not is_mgr and emp["is_assistant_manager"] and emp["sector"] is not None:
