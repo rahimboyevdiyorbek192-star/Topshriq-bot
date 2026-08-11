@@ -13,7 +13,6 @@ from aiogram.types import (
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
     WebAppInfo,
 )
 
@@ -252,6 +251,8 @@ async def btn_employees(message: Message, db: Database, config: Config) -> None:
 @router.message(F.text == "📌 Ishlarim")
 async def btn_my_tasks(message: Message, db: Database, config: Config) -> None:
     user  = message.from_user
+    if not user:
+        return
     tasks = await db.list_open_tasks()
     if not tasks:
         await message.answer("📭 Hozircha ochiq topshiriqlar yo'q.")

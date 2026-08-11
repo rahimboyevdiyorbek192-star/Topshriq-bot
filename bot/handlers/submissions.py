@@ -554,6 +554,64 @@ async def handle_group_submission(
             pass
 
 
+# ── FORWARD: rahbar xodim faylini botga forward qiladi ───────
+# MUHIM: bu handler handle_private_submission DAN OLDIN turishi kerak,
+# aks holda forward xabarlar private submission filtriga tushib qoladi.
+
+@router.message(
+    (F.chat.type == "private")
+    & F.forward_origin.IS_NOT_NONE
+)
+async def handle_forward_from_manager(
+    message: Message, db: Database, config: Config
+) -> None:
+    user = message.from_user
+    if not user or not config.is_manager(user.id):
+        return
+
+    origin = message.forward_origin
+    if not origin or not hasattr(origin, "sender_user") or not origin.sender_user:
+        return
+    sender = origin.sender_user
+    if sender.is_bot:
+        return
+
+    task_id = await _resolve_task_id(message, db)
+    if task_id is None:
+        tasks = await db.list_open_tasks()
+        if len(tasks) == 1:
+            task_id = tasks[0]["id"]
+        else:
+            ids_str = ", ".join(f"#{t['id']}" for t in tasks[:5])
+            await message.reply(
+                f"ℹ️ Qaysi topshiriq uchun?\n"
+                f"Ochiq topshiriqlar: {ids_str}\n"
+                f"Javob xabarida <code>#T[raqam]</code> yozing."
+            )
+            return
+
+    emp = await db.get_employee(sender.id)
+    if not emp:
+        full_name = _full_name(sender)
+        await db.add_employee(sender.id, full_name, sender.username)
+
+    info      = extract_file(message)
+    file_id   = info[0] if info else None
+    file_name = info[1] if info else None
+    note      = message_text(message)[:1000] or "Rahbar orqali qabul qilindi"
+
+    is_new   = await db.add_submission(
+        task_id=task_id, employee_id=sender.id,
+        message_id=message.message_id,
+        note=note, file_id=file_id, file_name=file_name,
+    )
+    emp_name = sender.full_name or "Xodim"
+    verb     = "qabul qilindi" if is_new else "yangilandi"
+    await message.reply(
+        f"✅ <b>{emp_name}</b> uchun #{task_id}-topshiriq {verb}."
+    )
+
+
 # ── DM: xodim botga shaxsiy xabar yuboradi ───────────────────
 
 @router.message(
@@ -747,57 +805,3 @@ async def cb_dm_submit(
     await callback.answer()
 
 
-# ── FORWARD: rahbar xodim faylini botga forward qiladi ───────
-
-@router.message(
-    (F.chat.type == "private")
-    & F.forward_origin.IS_NOT_NONE
-)
-async def handle_forward_from_manager(
-    message: Message, db: Database, config: Config
-) -> None:
-    user = message.from_user
-    if not user or not config.is_manager(user.id):
-        return
-
-    origin = message.forward_origin
-    if not origin or not hasattr(origin, "sender_user") or not origin.sender_user:
-        return
-    sender = origin.sender_user
-    if sender.is_bot:
-        return
-
-    task_id = await _resolve_task_id(message, db)
-    if task_id is None:
-        tasks = await db.list_open_tasks()
-        if len(tasks) == 1:
-            task_id = tasks[0]["id"]
-        else:
-            ids_str = ", ".join(f"#{t['id']}" for t in tasks[:5])
-            await message.reply(
-                f"ℹ️ Qaysi topshiriq uchun?\n"
-                f"Ochiq topshiriqlar: {ids_str}\n"
-                f"Javob xabarida <code>#T[raqam]</code> yozing."
-            )
-            return
-
-    emp = await db.get_employee(sender.id)
-    if not emp:
-        full_name = _full_name(sender)
-        await db.add_employee(sender.id, full_name, sender.username)
-
-    info      = extract_file(message)
-    file_id   = info[0] if info else None
-    file_name = info[1] if info else None
-    note      = message_text(message)[:1000] or "Rahbar orqali qabul qilindi"
-
-    is_new   = await db.add_submission(
-        task_id=task_id, employee_id=sender.id,
-        message_id=message.message_id,
-        note=note, file_id=file_id, file_name=file_name,
-    )
-    emp_name = sender.full_name or "Xodim"
-    verb     = "qabul qilindi" if is_new else "yangilandi"
-    await message.reply(
-        f"✅ <b>{emp_name}</b> uchun #{task_id}-topshiriq {verb}."
-    )

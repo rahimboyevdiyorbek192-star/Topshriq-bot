@@ -43,14 +43,14 @@ async def _check_deadlines(bot: Bot, db: Database, config: Config, userbot=None)
             if minutes_left <= m and not await db.was_reminder_sent(task["id"], m):
                 await _send_reminder(bot, db, config, task, overdue=False, userbot=userbot)
                 await db.mark_reminder_sent(task["id"], m)
-                break
 
 
 async def _send_reminder(
     bot: Bot, db: Database, config: Config, task, overdue: bool,
     userbot=None,
 ) -> None:
-    employees = await db.list_employees()
+    target_sector = task["target_sector"] if "target_sector" in task.keys() else None
+    employees = await db.list_employees(sector=target_sector)
     submitted = await db.submitted_employee_ids(task["id"])
     not_done  = [e for e in employees if e["tg_id"] not in submitted]
     if not not_done:

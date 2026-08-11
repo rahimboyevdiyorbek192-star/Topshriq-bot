@@ -127,8 +127,10 @@ class Database:
         ]:
             try:
                 await self._conn.execute(sql)
-            except Exception:
-                pass
+            except Exception as exc:
+                # Faqat "duplicate column" xatosini jim o'tkazamiz
+                if "duplicate column" not in str(exc).lower():
+                    logger.warning("Migration xatosi: %s — %s", sql, exc)
 
         # submission_files.file_id NOT NULL → NULL ruxsat berish (jadval qayta yaratish)
         try:

@@ -317,7 +317,15 @@ async def _get_mgr_level(
     if init_data:
         user = _validate_init_data(init_data, config.bot_token)
         if user:
-            return user, config.is_manager(user.get("id", 0)), None
+            tg_id = user.get("id", 0)
+            is_mgr = config.is_manager(tg_id)
+            am_sector_init: int | None = None
+            if not is_mgr:
+                emp_init = await db.get_employee(tg_id)
+                if emp_init and emp_init["is_assistant_manager"] and emp_init["sector"] is not None:
+                    is_mgr = True
+                    am_sector_init = int(emp_init["sector"])
+            return user, is_mgr, am_sector_init
 
     token = (
         request.headers.get("X-Session-Token", "")
@@ -1773,7 +1781,7 @@ async def handle_my_file_replace(request: web.Request) -> web.Response:
         r_chats.extend(config.manager_ids)
     if r_chats:
         asyncio.create_task(
-            _tg_send_submission(bot, r_chats, f"#{user_id}", 0, [(str(new_path), fname)])
+            _tg_send_submission(bot, r_chats, f"#{user_id}", task_id, [(str(new_path), fname)])
         )
     if old_path:
         try:

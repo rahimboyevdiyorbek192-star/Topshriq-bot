@@ -323,6 +323,7 @@ async def _announce_task(
     body: str,
     deadline_iso: str | None,
     files: list[tuple[str, str | None, str]],
+    target_sector: int | None = None,
 ) -> None:
     caption = (
         f"📢 <b>YANGI TOPSHIRIQ #{task_id}</b>\n\n"
@@ -374,7 +375,7 @@ async def _announce_task(
     dm_text += f"\n🗓 Muddat: {format_deadline(deadline_iso, config.tz)}"
     dm_text += "\n\n📱 Saytga kirib topshiriqni ko'ring va bajarib bo'lgach faylingizni yuboring."
 
-    employees = await db.list_employees(active_only=True)
+    employees = await db.list_employees(active_only=True, sector=target_sector)
     for emp in employees:
         if emp["tg_id"] <= 0:
             continue
