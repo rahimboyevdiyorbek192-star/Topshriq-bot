@@ -25,22 +25,40 @@ def build_task_text_report(
     employees: list[aiosqlite.Row],
     submitted_ids: set[int],
     tz: ZoneInfo,
+    partial_ids: set[int] = frozenset(),
 ) -> str:
-    """Bitta topshiriq bo'yicha kim bajardi / bajarmadi svodkasi."""
-    done = [e for e in employees if e["tg_id"] in submitted_ids]
-    not_done = [e for e in employees if e["tg_id"] not in submitted_ids]
+    """Bitta topshiriq bo'yicha 3 guruhli svodka: to'liq / chala / bajarmagan.
+
+    submitted_ids — to'liq bajarganlar (fully done).
+    partial_ids   — chala bajarganlar (topshirishgan, lekin fayllar yetarli emas).
+    """
+    done    = [e for e in employees if e["tg_id"] in submitted_ids]
+    partial = [e for e in employees if e["tg_id"] in partial_ids]
+    all_submitted = submitted_ids | partial_ids
+    not_done = [e for e in employees if e["tg_id"] not in all_submitted]
     total = len(employees)
     pct = round(len(done) / total * 100) if total else 0
+
+    req = task["required_files"] if "required_files" in task.keys() else 0
 
     lines = [
         f"📋 <b>Topshiriq #{task['id']}: {task['title']}</b>",
         f"🗓 Muddat: {format_deadline(task['deadline'], tz)}",
-        f"📊 Bajarildi: <b>{len(done)}/{total}</b> ({pct}%)",
+    ]
+    if req:
+        lines.append(f"📎 Talab qilinadigan fayllar: {req} ta")
+    lines += [
+        f"📊 To'liq bajardi: <b>{len(done)}/{total}</b> ({pct}%)",
         "",
     ]
     if done:
         lines.append("✅ <b>Bajarganlar:</b>")
         for i, e in enumerate(done, 1):
+            lines.append(f"  {i}. {_display_name(e)}")
+        lines.append("")
+    if partial:
+        lines.append("⏳ <b>Chala bajarganlar:</b>")
+        for i, e in enumerate(partial, 1):
             lines.append(f"  {i}. {_display_name(e)}")
         lines.append("")
     if not_done:
@@ -53,23 +71,32 @@ def build_task_text_report(
 
 
 def build_overall_text_report(
-    rows: list[tuple[aiosqlite.Row, set[int]]],
+    rows: list[tuple],
     employees: list[aiosqlite.Row],
     tz: ZoneInfo,
 ) -> str:
-    """Barcha ochiq topshiriqlar bo'yicha umumiy svodka."""
+    """Barcha ochiq topshiriqlar bo'yicha umumiy svodka.
+
+    rows elementlari: (task, fully_done_ids) yoki (task, fully_done_ids, partial_ids).
+    """
     total_emp = len(employees)
+    emp_ids = {e["tg_id"] for e in employees}
     lines = [f"📈 <b>UMUMIY SVODKA</b> — {datetime.now(tz).strftime('%d.%m.%Y %H:%M')}", ""]
     if not rows:
         lines.append("Hozircha ochiq topshiriqlar yo'q.")
         return "\n".join(lines)
-    for task, submitted in rows:
-        done = len(submitted & {e["tg_id"] for e in employees})
+    for entry in rows:
+        task = entry[0]
+        done_ids = entry[1]
+        partial_ids: set[int] = entry[2] if len(entry) > 2 else set()
+        done    = len(done_ids & emp_ids)
+        partial = len(partial_ids & emp_ids)
         pct = round(done / total_emp * 100) if total_emp else 0
         bar = _progress_bar(pct)
+        partial_txt = f" | ⏳{partial}" if partial else ""
         lines.append(
             f"#{task['id']} {task['title']}\n"
-            f"   {bar} {done}/{total_emp} ({pct}%) · "
+            f"   {bar} ✅{done}{partial_txt}/{total_emp} ({pct}%) · "
             f"{format_deadline(task['deadline'], tz)}"
         )
     return "\n".join(lines)

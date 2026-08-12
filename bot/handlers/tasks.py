@@ -7,12 +7,15 @@ Qoidalar:
 """
 from __future__ import annotations
 
+import logging
 import re
 import time
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 from aiogram import Bot, F, Router
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import BaseFilter, Command, CommandObject
 from aiogram.types import (
     InputMediaDocument,
     InputMediaPhoto,
@@ -23,6 +26,7 @@ from ..config import Config
 from ..database import Database
 from ..utils.deadline import format_deadline, humanize_left, parse_deadline
 from ..utils.files import extract_file, message_text
+from ..utils.notify import send_and_clean
 
 router = Router()
 
@@ -175,8 +179,8 @@ async def _do_create_task(
 
     tail = (
         "Ijro guruhiga e'lon yuborildi."
-        if config.execution_group_id
-        else "⚠️ Ijro guruhi (EXECUTION_GROUP_ID) sozlanmagan."
+        if config.execution_group_ids
+        else "⚠️ Ijro guruhi (EXECUTION_GROUP_IDS) sozlanmagan."
     )
     try:
         await message.reply(
@@ -188,7 +192,7 @@ async def _do_create_task(
     except Exception:
         pass
 
-    if config.execution_group_id:
+    if config.execution_group_ids:
         await _announce_task(bot, config, db, task_id, title, body, deadline_iso, files)
 
 
@@ -229,10 +233,31 @@ async def _should_be_task(
     return True, title, body
 
 
-# ── BARCHA MENEJER XABARLARI ─────────────────────────────────
+# ── Filtr: faqat rahbarning O'Z xabarlari (forward emas) ────
+
+class _IsManagerTaskPost(BaseFilter):
+    """Faqat rahbarning o'z topshiriq xabarlarini o'tkazadi.
+
+    Forward qilingan xabarlar va oddiy xodim xabarlari REJECT qilinadi,
+    shuning uchun ular submissions handleriga yetib boradi.
+    """
+
+    async def __call__(self, message: Message, config: Config) -> bool:
+        # Forward = xodim topshirig'i, submissions handler uchun
+        if message.forward_origin:
+            return False
+        if not _is_tasks_source(message, config):
+            return False
+        if not _is_manager_post(message, config):
+            return False
+        return True
+
+
+# ── RAHBAR TOPSHIRIQ XABARLARI ───────────────────────────────
 
 @router.message(
-    (F.chat.type.in_({"group", "supergroup"})) | (F.chat.type == "channel")
+    _IsManagerTaskPost(),
+    (F.chat.type.in_({"group", "supergroup"})) | (F.chat.type == "channel"),
 )
 async def handle_any_manager_message(
     message: Message,
@@ -242,10 +267,6 @@ async def handle_any_manager_message(
     bot: Bot,
     ai: Any = None,
 ) -> None:
-    if not _is_tasks_source(message, config):
-        return
-    if not _is_manager_post(message, config):
-        return
     if _cache_check(message.chat.id, message.message_id):
         return
 
@@ -302,6 +323,8 @@ async def _announce_task(
     body: str,
     deadline_iso: str | None,
     files: list[tuple[str, str | None, str]],
+    target_sector: int | None = None,
+    assignee_ids: list[int] | None = None,
 ) -> None:
     caption = (
         f"📢 <b>YANGI TOPSHIRIQ #{task_id}</b>\n\n"
@@ -315,31 +338,67 @@ async def _announce_task(
         f"(yoki xabar boshida <code>#T{task_id}</code> deb yozing)."
     )
 
+    # Faqat tayinlangan xodimlar uchun @mention qo'shamiz
+    if assignee_ids:
+        employees_all = await db.list_employees(active_only=True, sector=target_sector)
+        assignee_set = set(assignee_ids)
+        assignees = [e for e in employees_all if e["tg_id"] in assignee_set]
+        if assignees:
+            mentions = []
+            for e in assignees:
+                if e["username"]:
+                    mentions.append(f"@{e['username']}")
+                elif e["tg_id"] > 0:
+                    mentions.append(f'<a href="tg://user?id={e["tg_id"]}">{e["full_name"]}</a>')
+            if mentions:
+                caption += "\n\n👥 Tayinlangan: " + ", ".join(mentions)
+
     announce_msg = None
-    if len(files) == 1 and files[0][2] == "document":
-        announce_msg = await bot.send_document(
-            config.execution_group_id, files[0][0], caption=caption
-        )
-    elif files:
-        media = []
-        first = True
-        for fid, _fname, kind in files:
-            cap = caption if first else None
-            if kind == "photo":
-                media.append(InputMediaPhoto(media=fid, caption=cap))
-            else:
-                media.append(InputMediaDocument(media=fid, caption=cap))
-            first = False
+    for gid in config.execution_group_ids:
         try:
-            sent         = await bot.send_media_group(config.execution_group_id, media)
-            announce_msg = sent[0] if sent else None
-        except Exception:
-            announce_msg = await bot.send_message(config.execution_group_id, caption)
-    else:
-        announce_msg = await bot.send_message(config.execution_group_id, caption)
+            if len(files) == 1 and files[0][2] == "document":
+                sent_msg = await bot.send_document(gid, files[0][0], caption=caption)
+            elif files:
+                media = []
+                first = True
+                for fid, _fname, kind in files:
+                    cap = caption if first else None
+                    if kind == "photo":
+                        media.append(InputMediaPhoto(media=fid, caption=cap))
+                    else:
+                        media.append(InputMediaDocument(media=fid, caption=cap))
+                    first = False
+                try:
+                    sent_list = await bot.send_media_group(gid, media)
+                    sent_msg  = sent_list[0] if sent_list else None
+                except Exception:
+                    sent_msg = await bot.send_message(gid, caption)
+            else:
+                sent_msg = await bot.send_message(gid, caption)
+        except Exception as exc:
+            logger.warning("Guruh e'lon xato (task %s, chat %s): %s", task_id, gid, exc)
+            sent_msg = None
+        if sent_msg and announce_msg is None:
+            announce_msg = sent_msg  # Faqat birinchi guruh xabari saqlanadi
 
     if announce_msg:
         await db.set_announce_msg(task_id, announce_msg.message_id)
+
+    # Shaxsiy DM: faqat tayinlangan xodimlar (yoki sektordagi barcha xodimlar)
+    dm_text = f"📢 <b>Yangi topshiriq #{task_id}</b>\n\n<b>{title}</b>\n"
+    if body:
+        dm_text += f"\n{body}\n"
+    dm_text += f"\n🗓 Muddat: {format_deadline(deadline_iso, config.tz)}"
+    dm_text += "\n\n📱 Saytga kirib topshiriqni ko'ring va bajarib bo'lgach faylingizni yuboring."
+
+    employees = await db.list_employees(active_only=True, sector=target_sector)
+    assignee_set = set(assignee_ids) if assignee_ids else None
+    for emp in employees:
+        if emp["tg_id"] <= 0:
+            continue
+        if assignee_set is not None and emp["tg_id"] not in assignee_set:
+            continue  # Tayinlanmagan xodimga DM yubormaymiz
+        await send_and_clean(bot, db, emp["tg_id"], dm_text)
 
 
 # ── /topshiriqlar va /yopish ─────────────────────────────────
@@ -367,12 +426,94 @@ async def cmd_list_tasks(
     await message.reply("\n".join(lines))
 
 
+async def _is_authorized(user_id: int, config: Config, db: Database) -> bool:
+    """Rahbar yoki rahbar yordamchisi."""
+    if config.is_manager(user_id):
+        return True
+    emp = await db.get_employee(user_id)
+    return bool(emp and emp["is_assistant_manager"])
+
+
+@router.message(Command("muddat", "deadline"))
+async def cmd_edit_deadline(
+    message: Message, command: CommandObject, db: Database, config: Config, bot: Bot
+) -> None:
+    user = message.from_user
+    if not user or not await _is_authorized(user.id, config, db):
+        await message.reply("⛔️ Bu komanda faqat rahbar va rahbar yordamchisi uchun.")
+        return
+
+    args = (command.args or "").strip()
+    if not args:
+        await message.reply(
+            "ℹ️ Foydalanish:\n"
+            "<code>/muddat &lt;raqam&gt; &lt;yangi_muddat&gt;</code>\n\n"
+            "Masalan:\n"
+            "<code>/muddat 3 15.08.2026 18:00</code>\n"
+            "<code>/muddat 3 ertaga soat 17</code>"
+        )
+        return
+
+    parts = args.split(None, 1)
+    if not parts[0].isdigit():
+        await message.reply("⚠️ Birinchi argument topshiriq raqami bo'lishi kerak.")
+        return
+
+    task_id   = int(parts[0])
+    date_str  = parts[1].strip() if len(parts) > 1 else ""
+
+    task = await db.get_task(task_id)
+    if not task:
+        await message.reply(f"⚠️ #{task_id} topshiriq topilmadi.")
+        return
+
+    was_closed = task["status"] != "open"
+
+    if not date_str:
+        status_note = " (yopilgan)" if was_closed else ""
+        await message.reply(
+            f"📋 <b>#{task_id}</b>{status_note} — {task['title']}\n"
+            f"🗓 Hozirgi muddat: {format_deadline(task['deadline'], config.tz)}\n\n"
+            "Yangi muddatni kiriting:\n"
+            f"<code>/muddat {task_id} 15.08.2026 18:00</code>"
+        )
+        return
+
+    deadline_dt = parse_deadline(date_str, config.tz)
+    deadline_iso = deadline_dt.isoformat() if deadline_dt else None
+
+    ok = await db.update_task_deadline(task_id, deadline_iso)
+    if not ok:
+        await message.reply("⚠️ Muddat yangilanmadi (topshiriq topilmadi).")
+        return
+
+    new_deadline_str = format_deadline(deadline_iso, config.tz)
+    reopen_note = "\n🔓 Topshiriq qayta ochildi." if was_closed else ""
+    await message.reply(
+        f"✅ <b>#{task_id}</b> topshiriq muddati yangilandi.{reopen_note}\n"
+        f"🗓 Yangi muddat: {new_deadline_str}"
+    )
+
+    # Ijro guruhlariga xabar
+    notify_text = (
+        f"📝 <b>#{task_id} topshiriq muddati uzaytirildi</b>\n"
+        f"📌 {task['title']}\n"
+        f"🗓 Yangi muddat: {new_deadline_str}"
+        + ("\n🔓 Topshiriq qayta ochildi." if was_closed else "")
+    )
+    for gid in config.execution_group_ids:
+        try:
+            await bot.send_message(gid, notify_text)
+        except Exception:
+            pass
+
+
 @router.message(Command("yopish", "close"))
 async def cmd_close_task(
-    message: Message, command: CommandObject, db: Database, config: Config
+    message: Message, command: CommandObject, db: Database, config: Config, bot: Bot
 ) -> None:
-    if not (message.from_user and config.is_manager(message.from_user.id)):
-        await message.reply("⛔️ Bu komanda faqat rahbar uchun.")
+    if not (message.from_user and await _is_authorized(message.from_user.id, config, db)):
+        await message.reply("⛔️ Bu komanda faqat rahbar va rahbar yordamchisi uchun.")
         return
     if not (command.args and command.args.strip().isdigit()):
         await message.reply("ℹ️ Foydalanish: <code>/yopish N</code>")
@@ -384,3 +525,22 @@ async def cmd_close_task(
         return
     await db.close_task(task_id)
     await message.reply(f"🔒 Topshiriq #{task_id} yopildi.")
+
+
+@router.message(Command("guruhtest"))
+async def cmd_test_groups(
+    message: Message, bot: Bot, config: Config
+) -> None:
+    if not (message.from_user and config.is_manager(message.from_user.id)):
+        return
+    if not config.execution_group_ids:
+        await message.reply("⚠️ Hech qanday ijro guruhi sozlanmagan.")
+        return
+    lines = [f"🔍 Guruhlarni tekshirish ({len(config.execution_group_ids)} ta):"]
+    for gid in config.execution_group_ids:
+        try:
+            await bot.send_message(gid, "🔧 Guruh testi — bot ishlayapti.")
+            lines.append(f"✅ <code>{gid}</code> — muvaffaqiyatli")
+        except Exception as exc:
+            lines.append(f"❌ <code>{gid}</code> — xato: {exc}")
+    await message.reply("\n".join(lines))

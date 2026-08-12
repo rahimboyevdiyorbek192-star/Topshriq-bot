@@ -25,6 +25,14 @@ if not exist ".env" (
     exit /b 1
 )
 
+:: Eski bot jarayonini o'ldirish (port 8080 band bo'lsa)
+echo Port 8080 tekshirilmoqda...
+for /f "tokens=5" %%a in ('netstat -ano 2^>nul ^| findstr :8080 ^| findstr LISTENING') do (
+    echo Eski jarayon (PID %%a) o'ldirilmoqda...
+    taskkill /F /PID %%a >nul 2>&1
+)
+timeout /t 2 /nobreak >nul
+
 :: Botni ishga tushirish
 call venv\Scripts\activate.bat
 

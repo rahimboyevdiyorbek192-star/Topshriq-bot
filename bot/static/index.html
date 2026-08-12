@@ -1,0 +1,3088 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Topshiriq Tizimi</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<style>
+/* ── Ranglar ─────────────────────────────────────────────── */
+:root {
+  --bg:#f0f2f5; --surface:#fff; --border:#e5e7eb;
+  --text:#111827; --hint:#6b7280;
+  --primary:#2678b6; --primary-lt:#e8f1f9;
+  --success:#16a34a; --warning:#d97706; --danger:#dc2626;
+  --success-bg:#dcfce7; --warning-bg:#fef3c7; --danger-bg:#fee2e2;
+  --nav-h:70px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0f1117; --surface:#1c1e26; --border:#2d2f3d;
+    --text:#f1f3f5; --hint:#9ca3af; --primary-lt:#1a2d42;
+    --success-bg:#0f2e1a; --warning-bg:#2e1f00; --danger-bg:#2e0e0e;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0f1117; --surface:#1c1e26; --border:#2d2f3d;
+  --text:#f1f3f5; --hint:#9ca3af; --primary-lt:#1a2d42;
+  --success-bg:#0f2e1a; --warning-bg:#2e1f00; --danger-bg:#2e0e0e;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5}
+button,input,select,textarea{font-family:inherit}
+
+/* ── Karkas ──────────────────────────────────────────────── */
+#root{min-height:100dvh}
+#app{min-height:100dvh;display:flex}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-x:hidden}
+#page-content{flex:1;display:flex;flex-direction:column}
+
+/* ── Yon panel (kompyuter) ───────────────────────────────── */
+.sidebar{
+  width:240px;background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;position:sticky;top:0;
+  height:100dvh;overflow-y:auto;flex-shrink:0;
+}
+.sb-logo{padding:18px 16px 12px;border-bottom:1px solid var(--border)}
+.sb-logo-icon{font-size:28px;line-height:1;margin-bottom:6px}
+.sb-logo-name{font-size:13px;font-weight:700;line-height:1.3}
+.sb-logo-sub{font-size:11px;color:var(--hint);margin-top:2px}
+.sb-user{padding:10px 16px;border-bottom:1px solid var(--border)}
+.sb-user-name{font-size:13px;font-weight:600}
+.sb-user-role{font-size:11px;color:var(--hint);margin-top:2px}
+.sb-nav{flex:1;padding:6px 0}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:10px 16px;width:100%;
+  cursor:pointer;border:none;background:none;text-align:left;
+  font-size:14px;color:var(--text);transition:background .12s;
+}
+.nav-item:hover{background:var(--bg)}
+.nav-item.active{background:var(--primary-lt);color:var(--primary);font-weight:600}
+.nav-icon{font-size:17px;line-height:1;flex-shrink:0}
+.sb-footer{padding:12px 16px;border-top:1px solid var(--border)}
+.btn-logout{
+  display:flex;align-items:center;gap:8px;width:100%;padding:6px 0;
+  font-size:13px;color:var(--hint);cursor:pointer;background:none;border:none;
+}
+.btn-logout:hover{color:var(--danger)}
+
+/* ── Mobil sarlavha va pastki menyu ──────────────────────── */
+.mobile-header{
+  position:sticky;top:0;z-index:100;background:var(--surface);
+  border-bottom:1px solid var(--border);padding:10px 14px;
+  display:flex;align-items:center;gap:10px;
+}
+.mh-title{flex:1;min-width:0}
+.mh-title h1{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mh-title p{font-size:12px;color:var(--hint);margin-top:1px}
+.bottom-nav{
+  position:fixed;bottom:0;left:0;right:0;z-index:100;display:flex;
+  background:var(--surface);border-top:1px solid var(--border);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.bnav-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:8px 4px;cursor:pointer;background:none;border:none;
+  color:var(--hint);font-size:11px;
+}
+.bnav-item.active{color:var(--primary)}
+.bnav-icon{font-size:22px;line-height:1}
+
+@media(min-width:768px){
+  .mobile-header,.bottom-nav{display:none}
+  #page-content{overflow-y:auto;height:100dvh}
+}
+@media(max-width:767px){
+  .sidebar{display:none}
+  /* Pastki menyu tagida qolib ketmasligi uchun bo'sh joy */
+  .pad-nav{padding-bottom:calc(var(--nav-h) + 24px + env(safe-area-inset-bottom))}
+}
+
+/* ── Tugmalar ────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:9px 16px;border-radius:8px;font-size:14px;font-weight:600;
+  cursor:pointer;border:none;white-space:nowrap;transition:opacity .15s;
+}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:not(:disabled):active{opacity:.8}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-ghost{background:var(--bg);color:var(--text);border:1px solid var(--border)}
+.btn-sm{padding:6px 12px;font-size:13px}
+.btn-xs{padding:4px 8px;font-size:12px}
+.btn-full{width:100%}
+.btn-danger-ghost{color:var(--danger,#ef4444);border-color:var(--danger,#ef4444)}
+.my-file-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)}
+.my-file-row:last-of-type{border-bottom:none}
+.fi-name-sm{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.my-file-acts{display:flex;gap:4px;flex-shrink:0}
+
+/* ── Nishonlar ───────────────────────────────────────────── */
+.badge{
+  display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;
+  padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0;
+}
+.badge-done{background:var(--success-bg);color:var(--success)}
+.badge-wait{background:var(--warning-bg);color:var(--warning)}
+.badge-over{background:var(--danger-bg);color:var(--danger)}
+
+/* ── Topshiriqlar ro'yxati ───────────────────────────────── */
+.tasks-container{padding:14px;display:flex;flex-direction:column;gap:10px}
+@media(min-width:900px){
+  .tasks-container{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+    gap:14px;padding:20px 24px;align-content:start;
+  }
+  .tasks-full-row{grid-column:1/-1}
+}
+.task-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:14px 16px;cursor:pointer;transition:box-shadow .15s,border-color .15s;
+}
+.task-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.08);border-color:var(--primary)}
+.task-card:active{opacity:.85}
+.tc-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
+.tc-num{font-size:11px;color:var(--hint);font-weight:600}
+.tc-title{font-size:15px;font-weight:600;line-height:1.35;margin-bottom:6px}
+.tc-meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--hint);flex-wrap:wrap}
+.prog-wrap{margin-top:10px}
+.prog-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.prog-fill{height:100%;border-radius:3px;transition:width .4s ease}
+.pg-green{background:#22c55e}.pg-yellow{background:#f59e0b}.pg-red{background:#ef4444}
+.pg-done{background:#22c55e}.pg-part{background:#f59e0b}
+.prog-text{font-size:11px;color:var(--hint);margin-top:4px}
+
+/* ── Batafsil ────────────────────────────────────────────── */
+.detail-body{flex:1;padding:14px;display:flex;flex-direction:column;gap:14px;overflow-y:auto}
+@media(min-width:768px){.detail-body{padding:20px 24px 40px;max-width:860px}}
+.sec-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px}
+.sec-title{
+  font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--hint);margin-bottom:10px;
+}
+.task-name{font-size:16px;font-weight:700;margin-bottom:8px}
+.task-desc{font-size:14px;line-height:1.6;white-space:pre-wrap;color:var(--hint)}
+
+/* ── Svodka ──────────────────────────────────────────────── */
+.donut-wrap{display:flex;align-items:center;gap:16px;margin-top:8px;flex-wrap:wrap}
+.donut-legend{display:flex;flex-direction:column;gap:6px}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:13px}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.sub-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.sub-item:last-child{border-bottom:none;padding-bottom:0}
+.sub-avatar{
+  width:32px;height:32px;border-radius:50%;background:var(--primary-lt);
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;color:var(--primary);flex-shrink:0;
+}
+.sub-info{flex:1;min-width:0}
+.sub-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub-time{font-size:11px;color:var(--hint);margin-top:2px}
+.zip-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  padding:12px;border-radius:10px;border:none;cursor:pointer;
+  background:linear-gradient(135deg,#2678b6,#1e5a9c);
+  color:#fff;font-size:15px;font-weight:600;transition:opacity .15s;
+}
+.zip-btn:hover{opacity:.9}
+.zip-btn:active{opacity:.75}
+
+/* ── Fayllar ─────────────────────────────────────────────── */
+.file-item{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;
+  background:var(--bg);border-radius:8px;margin-bottom:6px;
+  cursor:pointer;transition:opacity .15s;
+}
+.file-item:last-child{margin-bottom:0}
+.file-item:hover{opacity:.8}
+.fi-icon{font-size:20px;flex-shrink:0}
+.fi-info{flex:1;min-width:0}
+.fi-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fi-type{font-size:11px;color:var(--hint);margin-top:1px}
+
+/* ── Yuklash ─────────────────────────────────────────────── */
+.upload-area{
+  border:2px dashed var(--border);border-radius:12px;padding:24px 16px;
+  text-align:center;cursor:pointer;position:relative;
+  transition:border-color .2s,background .2s;
+}
+.upload-area:hover,.upload-area.has-files{border-color:var(--primary);background:var(--primary-lt)}
+.upload-area input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.upload-icon{font-size:30px;display:block;margin-bottom:6px}
+.upload-lbl{font-size:14px;font-weight:500;color:var(--primary)}
+.upload-hint{font-size:12px;color:var(--hint);margin-top:4px}
+.sel-files{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.sel-file{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:8px;padding:8px 10px}
+.sf-name{flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sf-size{font-size:11px;color:var(--hint);white-space:nowrap}
+.sf-del{background:none;border:none;color:var(--hint);cursor:pointer;font-size:16px;padding:0 2px;line-height:1}
+.sf-del:hover{color:var(--danger)}
+.note-area{
+  width:100%;margin-top:8px;padding:10px 12px;min-height:76px;resize:vertical;
+  border:1.5px solid var(--border);border-radius:8px;
+  background:var(--bg);color:var(--text);font-size:14px;outline:none;
+  transition:border-color .15s;
+}
+.note-area:focus{border-color:var(--primary)}
+.submitted-banner{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:12px 14px;
+  background:var(--success-bg);border:1px solid #86efac;border-radius:10px;
+}
+.sb-icon{font-size:22px}
+.sb-lbl{font-size:13px;font-weight:600;color:var(--success)}
+.sb-sub{font-size:12px;color:var(--success);opacity:.8;margin-top:2px}
+.resubmit-note{font-size:12px;color:var(--hint);margin-bottom:8px}
+.submit-bar{
+  position:sticky;bottom:0;z-index:101;background:var(--surface);
+  border-top:1px solid var(--border);padding:12px 0;
+}
+@media(max-width:767px){
+  .submit-bar{bottom:calc(var(--nav-h) + env(safe-area-inset-bottom));padding:12px 14px;margin:0 -14px}
+}
+@media(min-width:768px){.submit-bar{position:static;border-top:none;padding:16px 0 0}}
+
+/* ── Formalar ────────────────────────────────────────────── */
+.form-group{margin-bottom:14px}
+.form-label{
+  display:block;margin-bottom:5px;font-size:12px;font-weight:700;
+  color:var(--hint);text-transform:uppercase;letter-spacing:.4px;
+}
+.form-input{
+  width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;
+  background:var(--bg);color:var(--text);font-size:14px;outline:none;
+  transition:border-color .15s;
+}
+.form-input:focus{border-color:var(--primary)}
+textarea.form-input{resize:vertical;min-height:90px}
+.form-hint{font-size:12px;color:var(--hint);margin-top:4px}
+.form-error{
+  display:none;margin-bottom:12px;padding:10px 12px;border-radius:8px;
+  background:var(--danger-bg);color:var(--danger);font-size:13px;
+}
+.form-error.show{display:block}
+.assign-toggle{display:flex;gap:8px;margin-top:2px}
+.assign-toggle-btn{
+  flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;
+  background:var(--bg);color:var(--hint);font-size:13px;font-weight:600;
+  cursor:pointer;transition:all .15s;text-align:center;
+}
+.assign-toggle-btn.active{border-color:var(--primary);background:var(--primary-bg);color:var(--primary)}
+.emp-checklist{max-height:220px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:6px 4px}
+.emp-check-item{
+  display:flex;align-items:center;gap:10px;padding:7px 8px;cursor:pointer;
+  border-bottom:1px solid var(--border);font-size:13px;
+}
+.emp-check-item:last-child{border-bottom:none}
+.emp-check-item input[type=checkbox]{accent-color:var(--primary);width:16px;height:16px;flex-shrink:0}
+.emp-check-item:hover{background:var(--bg);border-radius:6px}
+.pw-wrap{position:relative}
+.pw-wrap .form-input{padding-right:42px}
+.pw-eye{
+  position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;color:var(--hint);
+  font-size:18px;padding:0;line-height:1;
+}
+.pw-eye:hover{color:var(--text)}
+.pw-bar{height:4px;margin-top:6px;border-radius:2px;background:var(--border);overflow:hidden}
+.pw-fill{height:100%;width:0;border-radius:2px;transition:width .3s,background .3s}
+.pw-text{font-size:11px;margin-top:3px}
+
+/* ── Kirish sahifasi ─────────────────────────────────────── */
+.login-wrap{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-card{
+  width:100%;max-width:400px;padding:32px 28px;
+  background:var(--surface);border:1px solid var(--border);border-radius:16px;
+}
+.login-logo{text-align:center;margin-bottom:24px}
+.ll-icon{font-size:48px;display:block;margin-bottom:8px}
+.ll-title{font-size:18px;font-weight:700}
+.ll-sub{font-size:13px;color:var(--hint);margin-top:4px}
+.remember-row{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:14px}
+.remember-row input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary)}
+
+/* ── Xodimlar jadvali ────────────────────────────────────── */
+.table-wrap{overflow-x:auto}
+.emp-table{width:100%;border-collapse:collapse}
+.emp-table th{
+  padding:9px 12px;text-align:left;font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.4px;color:var(--hint);
+  border-bottom:1px solid var(--border);
+}
+.emp-table td{padding:11px 12px;border-bottom:1px solid var(--border);font-size:14px}
+.emp-table tr:last-child td{border-bottom:none}
+.emp-table tr:hover td{background:var(--bg)}
+.emp-inactive td{opacity:.5}
+@media(max-width:600px){.hide-sm{display:none}}
+
+/* ── Modal ───────────────────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);
+  display:flex;align-items:flex-end;justify-content:center;
+}
+@media(min-width:640px){.modal-overlay{align-items:center}}
+.modal{
+  width:100%;max-height:92dvh;overflow-y:auto;background:var(--surface);
+  border-radius:16px 16px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));
+}
+@media(min-width:640px){.modal{max-width:480px;border-radius:16px;padding:24px;max-height:88dvh}}
+.modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.modal-title{font-size:17px;font-weight:700}
+.modal-close{background:none;border:none;color:var(--hint);font-size:22px;cursor:pointer;padding:0 4px;line-height:1}
+.modal-close:hover{color:var(--text)}
+
+/* ── Holatlar ────────────────────────────────────────────── */
+.center-box{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;padding:40px 20px;text-align:center;
+}
+.center-box .icon{font-size:48px}
+.center-box p{color:var(--hint);font-size:14px;max-width:280px;line-height:1.5}
+.spinner{
+  width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--primary);
+  border-radius:50%;animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.overlay{
+  position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.55);
+  display:flex;align-items:center;justify-content:center;
+}
+.overlay-box{
+  display:flex;flex-direction:column;align-items:center;gap:14px;min-width:200px;
+  background:var(--surface);border-radius:16px;padding:28px 32px;
+}
+.overlay-text{font-size:14px;font-weight:500}
+.loc-live{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:12px;font-weight:600;color:var(--success);
+  background:var(--success-bg);padding:3px 10px;border-radius:99px;
+}
+.loc-live::before{
+  content:'';display:inline-block;width:7px;height:7px;
+  border-radius:50%;background:var(--success);
+  animation:loc-pulse 1.6s ease-in-out infinite;
+}
+@keyframes loc-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
+.success-overlay{
+  position:fixed;inset:0;z-index:998;background:var(--surface);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;animation:fadeIn .3s;
+}
+@keyframes fadeIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+.success-icon{font-size:72px;animation:popIn .4s .1s both}
+@keyframes popIn{from{transform:scale(0)}to{transform:scale(1)}}
+.success-title{font-size:20px;font-weight:700}
+.success-sub{font-size:14px;color:var(--hint);text-align:center;max-width:240px;line-height:1.5}
+.toast{
+  position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:500;
+  padding:10px 18px;border-radius:8px;background:#1a1a2e;color:#fff;
+  font-size:13px;white-space:nowrap;pointer-events:none;
+  animation:toastIn .2s,toastOut .3s 2.5s forwards;
+}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes toastOut{to{opacity:0;transform:translateX(-50%) translateY(8px)}}
+.dl-red{color:var(--danger);font-weight:600}
+.dl-yellow{color:var(--warning);font-weight:600}
+.dl-green{color:var(--success);font-weight:600}
+.flex{display:flex}.gap-8{gap:8px}.flex-wrap{flex-wrap:wrap}
+.items-center{align-items:center}.justify-between{justify-content:space-between}
+.mt-8{margin-top:8px}.mt-12{margin-top:12px}
+.text-hint{color:var(--hint)}.text-sm{font-size:13px}
+
+/* ── Tarix: Kalendar ─────────────────────────────────────── */
+.hist-search{
+  flex:1;min-width:130px;padding:8px 12px;
+  border:1.5px solid var(--border);border-radius:8px;
+  background:var(--bg);color:var(--text);font-size:14px;outline:none;
+  transition:border-color .15s;width:100%;margin-top:8px;
+}
+.hist-search:focus{border-color:var(--primary)}
+.hist-st-btn{
+  padding:7px 12px;border-radius:8px;border:1.5px solid var(--border);
+  background:none;color:var(--hint);font-size:13px;font-weight:500;cursor:pointer;
+  transition:all .15s;white-space:nowrap;
+}
+.hist-st-btn:hover{border-color:var(--primary);color:var(--primary)}
+.hist-st-btn.active{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cal-nav-title{font-size:14px;font-weight:700}
+.cal-nav-btn{
+  width:32px;height:32px;border-radius:8px;border:1.5px solid var(--border);
+  background:none;color:var(--text);font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:background .12s;
+}
+.cal-nav-btn:hover{background:var(--bg)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-head{text-align:center;font-size:10px;font-weight:700;color:var(--hint);padding:4px 2px 6px;text-transform:uppercase}
+.cal-cell{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;padding:2px;transition:background .12s}
+.cal-cell.cal-has-tasks{cursor:pointer}
+.cal-cell.cal-has-tasks:hover{background:var(--bg)}
+.cal-day-num{font-size:12px;line-height:1;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%}
+.cal-cell.cal-today .cal-day-num{background:var(--primary);color:#fff;font-weight:700}
+.cal-cell.cal-selected{background:var(--primary-lt)}
+.cal-cell.cal-selected .cal-day-num{color:var(--primary);font-weight:700}
+.cal-dots{display:flex;gap:2px;margin-top:2px;min-height:5px}
+.cal-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.cal-dot-open{background:var(--warning)}
+.cal-dot-closed{background:var(--success)}
+.cal-clear-row{text-align:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.hist-group-hdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--hint);padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:10px}
+
+/* ── KPI ─────────────────────────────────────────────────── */
+.kpi-grade-a{color:var(--success)}
+.kpi-grade-b{color:var(--warning)}
+.kpi-grade-c{color:#e65100}
+.kpi-grade-d{color:var(--danger)}
+.kpi-grade-none{color:var(--hint)}
+.kpi-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;margin-top:4px;
+}
+.kpi-badge-a{background:var(--success-bg);color:var(--success)}
+.kpi-badge-b{background:var(--warning-bg);color:var(--warning)}
+.kpi-badge-c{background:#fff3e0;color:#e65100}
+.kpi-badge-d{background:var(--danger-bg);color:var(--danger)}
+.kpi-badge-none{background:var(--bg);color:var(--hint)}
+.kpi-score-num{font-size:40px;font-weight:800;line-height:1}
+.kpi-q-card{border-left:3px solid var(--border);margin-bottom:10px}
+.kpi-q-current{border-left-color:var(--primary)}
+.kpi-q-empty{opacity:.55}
+.kpi-q-head{display:flex;align-items:center;justify-content:space-between}
+.kpi-q-num{font-size:15px;font-weight:700;margin-right:6px}
+.kpi-q-mlbl{font-size:12px;color:var(--hint)}
+.kpi-q-score{font-size:22px;font-weight:800}
+.kpi-month-row{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px}
+.kpi-month-name{width:64px;color:var(--hint);flex-shrink:0}
+.kpi-month-bar{flex:1;display:flex;align-items:center;gap:6px}
+.kpi-month-pct{width:34px;text-align:right;font-weight:600;flex-shrink:0;font-size:11px}
+.kpi-month-cnt{width:34px;text-align:right;color:var(--hint);flex-shrink:0;font-size:11px}
+.kpi-emp-row{cursor:pointer}
+.kpi-emp-row:hover td{background:var(--primary-lt)!important}
+.kpi-cell-a{color:var(--success);font-weight:700}
+.kpi-cell-b{color:var(--warning);font-weight:700}
+.kpi-cell-c{color:#e65100;font-weight:700}
+.kpi-cell-d{color:var(--danger);font-weight:700}
+.kpi-cell-none{color:var(--hint)}
+.kpi-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--hint);margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+<div id="root"><div class="center-box" style="min-height:100dvh"><div class="spinner"></div></div></div>
+
+<script>
+'use strict';
+
+/* ════════════════════════════════════════════════════════════
+   Telegram WebApp
+   ════════════════════════════════════════════════════════════ */
+const tg      = window.Telegram && window.Telegram.WebApp;
+const TG_INIT = (tg && tg.initData) || '';
+const IS_TG   = !!TG_INIT;
+if (tg) { tg.ready(); tg.expand(); }
+
+// Mobil klaviatura chiqqanda input ko'rinib tursin
+document.addEventListener('focusin', function(e) {
+  const el = e.target;
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
+    setTimeout(function() {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 350);
+  }
+});
+
+/* ════════════════════════════════════════════════════════════
+   Sessiya saqlash
+   ════════════════════════════════════════════════════════════ */
+const Store = {
+  getToken() { return localStorage.getItem('tq_tok') || sessionStorage.getItem('tq_tok') || ''; },
+  setToken(v, remember) {
+    if (remember) { localStorage.setItem('tq_tok', v); sessionStorage.removeItem('tq_tok'); }
+    else          { sessionStorage.setItem('tq_tok', v); localStorage.removeItem('tq_tok'); }
+  },
+  clear() { localStorage.removeItem('tq_tok'); sessionStorage.removeItem('tq_tok'); },
+};
+
+/* ════════════════════════════════════════════════════════════
+   Holat
+   ════════════════════════════════════════════════════════════ */
+const MAX_UPLOAD = 50 * 1024 * 1024;   // server chegarasi bilan bir xil
+
+function freshState() {
+  return {
+    page:'loading', isManager:false, amSector:null, user:null,
+    tasks:[], activeTask:null, detail:null, employees:[],
+    selFiles:[], ctFiles:[], note:'', myFiles:[],
+    trackEmpId: null, trackEmpName: '', trackDate: '',
+    history: [],
+    histCalYear: new Date().getFullYear(),
+    histCalMonth: new Date().getMonth(),
+    histFilter: {status:'all', search:'', date:null},
+    kpiYear: new Date().getFullYear(),
+    kpiData: null,
+    kpiView: 'summary',
+    kpiEmpId: null,
+    kpiEmpData: null,
+  };
+}
+let S = freshState();
+
+/* ── Sozlamalar (tashkilot matni) ── */
+let SETTINGS = {
+  org_name:    'Tashkilot nomi',
+  app_title:   'Topshiriq Tizimi',
+  dept_name:   "Bo'lim",
+  task_label:  'Topshiriq',
+  emp_label:   'Xodim',
+  welcome_msg: 'Topshiriqlar boshqaruv tizimiga xush kelibsiz.',
+};
+async function loadSettings() {
+  try {
+    const d = await api('/api/settings', {skipAuth: true});
+    if (d && !d.error) SETTINGS = {...SETTINGS, ...d};
+  } catch (_) {}
+}
+
+/* ════════════════════════════════════════════════════════════
+   Yordamchilar
+   ════════════════════════════════════════════════════════════ */
+/* HTML matn va atribut konteksti uchun. Apostrof ham qochiriladi —
+   o'zbek ismlarida ("O'ktam", "Sa'dulla") u juda ko'p uchraydi.  */
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+/* EXIF sanasini "2024:08:07 14:30:00" → "07.08.2024 14:30" ko'rinishiga o'tkazadi */
+function exifDateStr(exif) {
+  if (!exif) return '';
+  const m = exif.match(/^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2})/);
+  if (!m) return exif;
+  return `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}`;
+}
+
+function fileIcon(name, kind) {
+  if (!name && kind === 'photo') return '🖼️';
+  const ext = String(name || '').split('.').pop().toLowerCase();
+  const map = {xlsx:'📊',xls:'📊',docx:'📄',doc:'📄',pptx:'📑',ppt:'📑',pdf:'📋',
+               jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',zip:'🗜️',rar:'🗜️',
+               txt:'📝',mp4:'🎬',mp3:'🎵'};
+  return map[ext] || (kind === 'photo' ? '🖼️' : '📎');
+}
+
+function fileExt(name) {
+  const ext = String(name || '').split('.').pop();
+  return (ext && ext !== name) ? ext.toUpperCase() : 'Fayl';
+}
+
+function fsize(b) {
+  if (!b) return '';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return String(iso).slice(0, 16).replace('T', ' ');
+  return d.toLocaleString('uz-UZ', {day:'2-digit',month:'2-digit',year:'numeric',
+                                    hour:'2-digit',minute:'2-digit'});
+}
+
+/* Muddatni tuzilgan holda qaytaradi, matnni kesib olishga hojat qolmaydi */
+function deadlineInfo(iso) {
+  if (!iso) return {date:'Muddat belgilanmagan', rel:'', cls:''};
+  const d = new Date(iso);
+  if (isNaN(d)) return {date:String(iso), rel:'', cls:''};
+  const diff = d - new Date(), abs = Math.abs(diff);
+  const days = Math.floor(abs/86400000);
+  const hrs  = Math.floor((abs%86400000)/3600000);
+  const mins = Math.floor((abs%3600000)/60000);
+  const date = d.toLocaleDateString('uz-UZ',{day:'numeric',month:'long'}) + ' ' +
+               d.toLocaleTimeString('uz-UZ',{hour:'2-digit',minute:'2-digit'});
+  if (diff < 0)   return {date, rel:"muddat o'tdi",           cls:'dl-red'};
+  if (days > 1)   return {date, rel:`${days} kun qoldi`,       cls:'dl-green'};
+  if (days === 1) return {date, rel:`1 kun ${hrs} soat qoldi`, cls:'dl-yellow'};
+  return {date, rel:`${hrs} soat ${mins} daqiqa qoldi`, cls:'dl-yellow'};
+}
+const deadlineText = i => { const d = deadlineInfo(i); return d.rel ? `${d.date} · ${d.rel}` : d.date; };
+
+const pgCls    = p => p >= 80 ? 'pg-green' : p >= 40 ? 'pg-yellow' : 'pg-red';
+const initials = n => String(n || '?').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+const pct      = (d,t) => t > 0 ? Math.round(d/t*100) : 0;
+
+/* datetime-local maydoni uchun MAHALLIY vaqt (toISOString UTC beradi — xato) */
+function localInputValue(d) {
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+/* "2026-08-08T18:00" → "2026-08-08T18:00:00+05:00" (mahalliy vaqt zonasi bilan) */
+function localToIso(v) {
+  const off = -new Date(v).getTimezoneOffset();
+  const p = n => String(Math.floor(Math.abs(n))).padStart(2,'0');
+  return `${v}:00${off >= 0 ? '+' : '-'}${p(off/60)}:${p(off%60)}`;
+}
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3100);
+}
+
+function showAlert(msg) {
+  if (IS_TG && tg.showAlert) tg.showAlert(msg); else alert(msg);
+}
+
+/* Telegram WebView'da native confirm() ishlamaydi */
+function showConfirm(msg) {
+  return new Promise(res => {
+    if (IS_TG && tg.showConfirm) tg.showConfirm(msg, ok => res(!!ok));
+    else res(window.confirm(msg));
+  });
+}
+
+/* Telegram WebView window.open() ni bloklaydi */
+function openUrl(url) {
+  if (IS_TG && tg.openLink) tg.openLink(url);
+  else window.open(url, '_blank');
+}
+
+function formError(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (msg) { el.textContent = msg; el.classList.add('show'); }
+  else el.classList.remove('show');
+}
+
+/* ════════════════════════════════════════════════════════════
+   API
+   ════════════════════════════════════════════════════════════ */
+function authHeaders() {
+  const h = {};
+  if (TG_INIT) h['X-Telegram-Init-Data'] = TG_INIT;
+  const t = Store.getToken();
+  if (t) h['X-Session-Token'] = t;
+  return h;
+}
+
+function authQuery() {
+  return TG_INIT ? 'init=' + encodeURIComponent(TG_INIT)
+                 : 'token=' + encodeURIComponent(Store.getToken());
+}
+
+async function api(path, opts) {
+  opts = opts || {};
+  const isForm  = opts.body instanceof FormData;
+  const headers = Object.assign(
+    isForm ? {} : {'Content-Type':'application/json'},
+    authHeaders(), opts.headers || {}
+  );
+  const body = (opts.body && !isForm && typeof opts.body === 'object')
+    ? JSON.stringify(opts.body) : opts.body;
+
+  const res = await fetch(path, Object.assign({}, opts, {headers, body}));
+
+  /* 401 = sessiya tugagan → chiqarib yuboramiz.
+     403 = ruxsat yo'q (masalan xodim rahbar sahifasini so'radi) → xato matni. */
+  if (res.status === 401 && !IS_TG) { forceLogout(); return null; }
+  if (res.status === 413) return {error:"Fayl juda katta (maksimum 50 MB)"};
+
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('json')) return {error:`Server xatosi (${res.status})`};
+  return res.json();
+}
+
+function forceLogout() {
+  stopSSE();
+  Store.clear();
+  S = freshState();
+  render({page:'login'});
+}
+
+/* ════════════════════════════════════════════════════════════
+   Pastki nav balandligini o'lchash
+   ════════════════════════════════════════════════════════════ */
+function _syncNavHeight() {
+  const bn = document.querySelector('.bottom-nav');
+  if (!bn) return;
+  const h = bn.getBoundingClientRect().height || bn.offsetHeight;
+  if (h > 10) document.documentElement.style.setProperty('--nav-h', h + 'px');
+}
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(_syncNavHeight).observe(document.documentElement);
+}
+window.addEventListener('resize', _syncNavHeight);
+
+/* ════════════════════════════════════════════════════════════
+   Render
+   ════════════════════════════════════════════════════════════ */
+function render(patch) {
+  Object.assign(S, patch || {});
+  const root = document.getElementById('root');
+
+  if (S.page === 'loading') {
+    root.innerHTML = '<div class="center-box" style="min-height:100dvh"><div class="spinner"></div></div>';
+    return;
+  }
+  if (S.page === 'login') { root.innerHTML = loginPage(); focusLogin(); return; }
+
+  root.innerHTML = shell();
+  syncBackButton();
+  _syncNavHeight();
+  updatePage();
+}
+
+function updatePage() {
+  const pc = document.getElementById('page-content');
+  if (!pc) return;
+
+  const titles = {
+    'tasks':       'Topshiriqlar',
+    'task-detail': S.activeTask ? `#${S.activeTask.id} ${S.activeTask.title}` : 'Topshiriq',
+    'create-task': "Topshiriq qo'shish",
+    'employees':   'Xodimlar',
+    'history':     'Tarix',
+    'kpi':         'KPI Natijalar',
+    'settings':    'Sozlamalar',
+  };
+  const mh = document.getElementById('mh-t');
+  if (mh) mh.textContent = titles[S.page] || 'Topshiriqlar';
+
+  if (S.page === 'tasks')            pc.innerHTML = taskListPage();
+  else if (S.page === 'task-detail') pc.innerHTML = S.isManager ? mgrDetailPage() : empDetailPage();
+  else if (S.page === 'create-task') { pc.innerHTML = createTaskPage(); initDeadlineField(); }
+  else if (S.page === 'employees')   pc.innerHTML = employeesPage();
+  else if (S.page === 'map')         { pc.innerHTML = mapPage(); loadLiveMap(); }
+  else if (S.page === 'track-emp')   { pc.innerHTML = trackEmpPage(); loadEmpTrack(S.trackDate); }
+  else if (S.page === 'history')     { pc.innerHTML = historyPage(); loadHistory(); }
+  else if (S.page === 'kpi')         { pc.innerHTML = kpiPage(); loadKpi(); }
+  else if (S.page === 'settings')    { pc.innerHTML = settingsPage(); loadSettingsPage(); }
+}
+
+function gotoPage(page, extra) {
+  if (page === 'tasks') render({page:'tasks', activeTask:null, detail:null, selFiles:[], note:''});
+  else if (page === 'employees') loadEmployees().then(() => render({page:'employees'}));
+  else if (page === 'create-task') loadEmployees().then(() => render({page:'create-task'}));
+  else if (page === 'track-emp' && extra) render({page:'track-emp', ...extra});
+  else if (page === 'history') render({page:'history'});
+  else if (page === 'kpi') render({page:'kpi', kpiView:'summary', kpiEmpId:null, kpiEmpData:null});
+  else render({page});
+}
+
+/* ── Karkas ──────────────────────────────────────────────── */
+function shell() {
+  const name    = (S.user && S.user.first_name) || 'Xodim';
+  const role    = S.isManager
+    ? (S.amSector !== null ? `👔 Rahbar Yordamchisi (${S.amSector}-sektor)` : '👔 Rahbar')
+    : '👤 Xodim';
+  const inTasks = S.page === 'tasks' || S.page === 'task-detail';
+
+  const isAM = S.isManager && S.amSector !== null;
+  const mgrNav = S.isManager ? `
+    <button class="nav-item ${S.page === 'create-task' ? 'active' : ''}" data-act="page" data-page="create-task">
+      <span class="nav-icon">➕</span> Topshiriq qo'shish
+    </button>
+    <button class="nav-item ${S.page === 'employees' ? 'active' : ''}" data-act="page" data-page="employees">
+      <span class="nav-icon">👥</span> Xodimlar
+    </button>
+    <button class="nav-item ${S.page === 'map' ? 'active' : ''}" data-act="page" data-page="map">
+      <span class="nav-icon">📍</span> Joylashuv
+    </button>
+    ${!isAM ? `<button class="nav-item ${S.page === 'settings' ? 'active' : ''}" data-act="page" data-page="settings">
+      <span class="nav-icon">⚙️</span> Sozlamalar
+    </button>` : ''}` : '';
+
+  const mgrBnav = S.isManager ? `
+    <button class="bnav-item ${S.page === 'create-task' ? 'active' : ''}" data-act="page" data-page="create-task">
+      <span class="bnav-icon">➕</span>Yangi
+    </button>
+    <button class="bnav-item ${S.page === 'employees' ? 'active' : ''}" data-act="page" data-page="employees">
+      <span class="bnav-icon">👥</span>Xodimlar
+    </button>
+    ${!isAM ? `<button class="bnav-item ${S.page === 'settings' ? 'active' : ''}" data-act="page" data-page="settings">
+      <span class="bnav-icon">⚙️</span>Sozlamalar
+    </button>` : ''}
+    <button class="bnav-item ${S.page === 'map' ? 'active' : ''}" data-act="page" data-page="map">
+      <span class="bnav-icon">📍</span>Xarita
+    </button>` : '';
+
+  const logoutBtn = IS_TG ? '' : '<button class="btn-logout" data-act="logout">🚪 Chiqish</button>';
+
+  return `
+  <div id="app">
+    <div class="sidebar">
+      <div class="sb-logo">
+        <div class="sb-logo-icon">🏛️</div>
+        <div class="sb-logo-name">${esc(SETTINGS.org_name)}</div>
+        <div class="sb-logo-sub">${esc(SETTINGS.app_title)}</div>
+      </div>
+      <div class="sb-user">
+        <div class="sb-user-name">${esc(name)}</div>
+        <div class="sb-user-role">${role}</div>
+      </div>
+      <nav class="sb-nav">
+        <button class="nav-item ${inTasks ? 'active' : ''}" data-act="page" data-page="tasks">
+          <span class="nav-icon">📋</span> Topshiriqlar
+        </button>
+        <button class="nav-item ${S.page === 'history' ? 'active' : ''}" data-act="page" data-page="history">
+          <span class="nav-icon">📅</span> Tarix
+        </button>
+        <button class="nav-item ${S.page === 'kpi' ? 'active' : ''}" data-act="page" data-page="kpi">
+          <span class="nav-icon">📊</span> KPI
+        </button>
+        ${mgrNav}
+      </nav>
+      <div class="sb-footer">${logoutBtn}</div>
+    </div>
+
+    <div class="main">
+      <div class="mobile-header">
+        <div class="mh-title">
+          <h1 id="mh-t">Topshiriqlar</h1>
+          <p>${esc(name)} · ${role}</p>
+        </div>
+        ${IS_TG ? '' : '<button class="btn btn-ghost btn-sm" data-act="logout">Chiqish</button>'}
+      </div>
+      <div id="page-content"></div>
+    </div>
+
+    <div class="bottom-nav">
+      <button class="bnav-item ${inTasks ? 'active' : ''}" data-act="page" data-page="tasks">
+        <span class="bnav-icon">📋</span>Topshiriqlar
+      </button>
+      <button class="bnav-item ${S.page === 'history' ? 'active' : ''}" data-act="page" data-page="history">
+        <span class="bnav-icon">📅</span>Tarix
+      </button>
+      <button class="bnav-item ${S.page === 'kpi' ? 'active' : ''}" data-act="page" data-page="kpi">
+        <span class="bnav-icon">📊</span>KPI
+      </button>
+      ${mgrBnav}
+    </div>
+  </div>`;
+}
+
+function syncBackButton() {
+  if (!tg || !tg.BackButton) return;
+  if (S.page === 'task-detail') tg.BackButton.show(); else tg.BackButton.hide();
+}
+
+/* ════════════════════════════════════════════════════════════
+   Kirish
+   ════════════════════════════════════════════════════════════ */
+function loginPage() {
+  return `
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">
+        <span class="ll-icon">🏛️</span>
+        <div class="ll-title">${esc(SETTINGS.org_name)}</div>
+        <div class="ll-sub">${esc(SETTINGS.app_title)} — kirish</div>
+      </div>
+      <div class="form-error" id="lerr"></div>
+      <div class="form-group">
+        <label class="form-label" for="lphone">Telefon raqam</label>
+        <input class="form-input" type="tel" id="lphone" placeholder="+998 90 123 45 67" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="lpw">Parol</label>
+        <div class="pw-wrap">
+          <input class="form-input" type="password" id="lpw" placeholder="Parolingiz" autocomplete="current-password">
+          <button class="pw-eye" type="button" data-act="pw-eye" data-target="lpw">👁️</button>
+        </div>
+      </div>
+      <div class="remember-row">
+        <input type="checkbox" id="remember">
+        <label for="remember">Eslab qolish (7 kun)</label>
+      </div>
+      <button class="btn btn-primary btn-full" id="lbtn" data-act="login">Kirish</button>
+    </div>
+  </div>`;
+}
+
+function focusLogin() {
+  const ph = document.getElementById('lphone'), pw = document.getElementById('lpw');
+  if (ph) ph.addEventListener('keydown', e => { if (e.key === 'Enter') pw && pw.focus(); });
+  if (pw) pw.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+}
+
+function togglePw(id, btn) {
+  const i = document.getElementById(id);
+  if (!i) return;
+  i.type = i.type === 'password' ? 'text' : 'password';
+  btn.textContent = i.type === 'password' ? '👁️' : '🙈';
+}
+
+function getGeoCoords() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    const t = setTimeout(() => resolve(null), 5000);
+    navigator.geolocation.getCurrentPosition(
+      pos => { clearTimeout(t); resolve({lat: pos.coords.latitude, lon: pos.coords.longitude}); },
+      ()  => { clearTimeout(t); resolve(null); },
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  });
+}
+
+async function doLogin() {
+  const phone = (document.getElementById('lphone') || {}).value || '';
+  const pw    = (document.getElementById('lpw')    || {}).value || '';
+  const rem   = !!(document.getElementById('remember') || {}).checked;
+  const btn   = document.getElementById('lbtn');
+
+  if (!phone.trim() || !pw) { formError('lerr', 'Telefon va parolni kiriting'); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Joylashuv aniqlanmoqda…'; }
+  formError('lerr', '');
+
+  const coords = await getGeoCoords();
+  if (btn) btn.textContent = 'Yuklanmoqda…';
+
+  try {
+    const res  = await fetch('/api/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({phone: phone.trim(), password: pw, lat: coords?.lat ?? null, lon: coords?.lon ?? null}),
+    });
+    const data = await res.json();
+    if (data.error) {
+      formError('lerr', data.error);
+      if (btn) { btn.disabled = false; btn.textContent = 'Kirish'; }
+      return;
+    }
+    Store.setToken(data.token, rem);
+    S = freshState();
+    S.isManager = data.role === 'manager' || data.role === 'assistant_manager';
+    S.amSector  = data.sector || null;
+    S.user      = {first_name: data.name};
+    startSSE();
+    if (!S.isManager) startLocationTracking();
+    if (await loadTasks()) render({page:'tasks'});
+  } catch (e) {
+    formError('lerr', 'Tarmoq xatosi: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Kirish'; }
+  }
+}
+
+async function doLogout() {
+  try {
+    await fetch('/api/logout', {method:'POST', headers: authHeaders()});
+  } catch (_) { /* tarmoq uzilgan bo'lsa ham chiqaramiz */ }
+  forceLogout();
+}
+
+/* ════════════════════════════════════════════════════════════
+   Topshiriqlar ro'yxati
+   ════════════════════════════════════════════════════════════ */
+async function loadTasks() {
+  const data = await api('/api/tasks');
+  if (!data) return false;                 // 401 — allaqachon chiqarildi
+  if (data.error) { showAlert(data.error); return false; }
+  S.tasks     = data.tasks || [];
+  S.isManager = !!data.is_manager;
+  S.amSector  = data.am_sector || null;
+  if (!S.user) S.user = data.user;
+  return true;
+}
+
+function taskListPage() {
+  if (!S.tasks.length) {
+    const add = S.isManager
+      ? '<button class="btn btn-primary mt-12" data-act="page" data-page="create-task">➕ Yangi topshiriq</button>'
+      : '';
+    return `<div class="center-box pad-nav"><div class="icon">📭</div>
+              <p>Hozircha ochiq topshiriqlar yo'q</p>${add}</div>`;
+  }
+
+  const addBtn = S.isManager ? `
+    <div class="tasks-full-row">
+      <button class="btn btn-primary btn-full" data-act="page" data-page="create-task">
+        ➕ Yangi topshiriq qo'shish
+      </button>
+    </div>` : '';
+
+  const cards = S.tasks.map(t => {
+    const p  = pct(t.done_count, t.total_count);
+    const dl = deadlineInfo(t.deadline);
+    const req = t.required_files || 0;
+    const myCount = t.my_file_count || 0;
+    // For employees with file requirement — show own progress, not overall
+    const showMyPct = !S.isManager && req > 0;
+    const dispPct  = showMyPct ? Math.min(100, Math.round(myCount / req * 100)) : p;
+    const dispCls  = showMyPct ? (myCount>=req?'pg-done':myCount>0?'pg-part':'') : pgCls(p);
+    const dispTxt  = showMyPct ? `${myCount}/${req} fayl (${dispPct}%)` : `${p}% bajarildi`;
+    let badge;
+    if (t.submitted_by_me) {
+      badge = '<span class="badge badge-done">✅ Topshirdim</span>';
+    } else if (!S.isManager && req > 0 && myCount > 0) {
+      badge = `<span class="badge badge-wait">⏳ ${myCount}/${req} fayl</span>`;
+    } else if (dl.cls === 'dl-red') {
+      badge = '<span class="badge badge-over">🔴 Kechikdi</span>';
+    } else {
+      badge = '<span class="badge badge-wait">⏳ Kutilmoqda</span>';
+    }
+    const creatorBadge = t.creator_name
+      ? `<span class="badge" style="background:var(--primary-bg);color:var(--primary);font-size:10px;margin-left:4px">🔵 ${esc(t.creator_name)}</span>`
+      : '';
+    const assignBadge = (t.assignee_ids && t.assignee_ids.length)
+      ? `<span class="badge" style="background:#f0fdf4;color:#166534;font-size:10px;margin-left:4px">🎯 Tayinlangan</span>`
+      : '';
+    return `
+    <div class="task-card" data-act="task" data-id="${t.id}">
+      <div class="tc-head"><span class="tc-num">#${t.id}</span>${badge}${creatorBadge}${assignBadge}</div>
+      <div class="tc-title">${esc(t.title)}</div>
+      <div class="tc-meta">
+        <span>📅 ${esc(dl.date)}</span>
+        <span>👥 ${t.done_count}/${t.total_count}</span>
+      </div>
+      <div class="prog-wrap">
+        <div class="prog-bar"><div class="prog-fill ${dispCls}" style="width:${dispPct}%"></div></div>
+        <div class="prog-text">${dispTxt}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="tasks-container pad-nav">${addBtn}${cards}</div>`;
+}
+
+async function openTask(id) {
+  const t = S.tasks.find(x => x.id === id) || (S.history || []).find(x => x.id === id);
+  if (!t) return;
+  render({page:'task-detail', activeTask:t, detail:null, selFiles:[], note:'', myFiles:[]});
+
+  if (S.isManager) {
+    const d = await api(`/api/tasks/${id}/detail`);
+    if (!d || d.error) return;
+    if (S.page !== 'task-detail' || !S.activeTask || S.activeTask.id !== id) return;
+    S.detail = d;
+    if (S.amSector !== null) {
+      const mf = await api(`/api/my-files/${id}`);
+      if (mf && !mf.error) S.myFiles = mf.files || [];
+    }
+    updatePage();
+  } else {
+    const mf = await api(`/api/my-files/${id}`);
+    if (!mf || mf.error) return;
+    if (S.page !== 'task-detail' || !S.activeTask || S.activeTask.id !== id) return;
+    S.myFiles = mf.files || [];
+    updatePage();
+  }
+}
+
+/* ── Umumiy bo'laklar ────────────────────────────────────── */
+function fileListHtml(files, emptyText) {
+  if (!files || !files.length) return `<p class="text-hint text-sm">${esc(emptyText)}</p>`;
+  return files.map(f => `
+    <div class="file-item" data-act="file" data-fid="${esc(f.file_id)}" data-fname="${esc(f.file_name || 'fayl')}">
+      <span class="fi-icon">${fileIcon(f.file_name, f.kind)}</span>
+      <div class="fi-info">
+        <div class="fi-name">${esc(f.file_name || 'Fayl')}</div>
+        <div class="fi-type">${esc(fileExt(f.file_name))}</div>
+      </div>
+      <span>⬇️</span>
+    </div>`).join('');
+}
+
+function taskHeaderHtml(t, extra) {
+  const dl = deadlineInfo(t.deadline);
+  return `
+  <div class="sec-card">
+    <div class="sec-title">📋 Topshiriq</div>
+    <div class="task-name">${esc(t.title)}</div>
+    ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
+    <div class="mt-12 flex gap-8 flex-wrap text-sm">
+      <span class="${dl.cls}">📅 ${esc(deadlineText(t.deadline))}</span>
+      ${extra || ''}
+    </div>
+  </div>`;
+}
+
+const backBtnHtml = '<div><button class="btn btn-ghost btn-sm" data-act="page" data-page="tasks">← Orqaga</button></div>';
+
+/* ── Rahbar yordamchisi: o'z topshirish qismi ───────────── */
+function amSubmitSection() {
+  if (S.amSector === null) return '';
+  const t   = S.activeTask;
+  const req = t.required_files || 0;
+  const myCount = t.my_file_count || 0;
+
+  let progressHtml = '';
+  if (req > 0) {
+    const fp = Math.min(100, Math.round(myCount / req * 100));
+    const fpCls = myCount >= req ? 'pg-done' : myCount > 0 ? 'pg-part' : '';
+    progressHtml = `
+    <div class="sec-card" style="margin-bottom:0">
+      <div class="flex items-center justify-between" style="margin-bottom:6px">
+        <span style="font-size:13px;font-weight:600">📂 Mening fayl talabim</span>
+        <span style="font-size:13px;color:${myCount>=req?'var(--success)':'var(--warning)'};font-weight:700">${myCount}/${req}</span>
+      </div>
+      <div class="prog-bar"><div class="prog-fill ${fpCls}" style="width:${fp}%"></div></div>
+    </div>`;
+  }
+
+  const banner = t.submitted_by_me ? `
+    <div class="submitted-banner">
+      <span class="sb-icon">✅</span>
+      <div><div class="sb-lbl">Topshirildi!</div></div>
+    </div>
+    <div class="resubmit-note">Qayta yuborish uchun yangi fayl tanlang</div>` : '';
+
+  const myFilesHtml = S.myFiles && S.myFiles.length ? `
+    <div class="sec-card">
+      <div class="sec-title">📂 Mening fayllarim</div>
+      ${S.myFiles.map(f => `
+        <div class="my-file-row">
+          <span class="fi-icon">${fileIcon(f.file_name, '')}</span>
+          <span class="fi-name-sm">${esc(f.file_name)}</span>
+          <div class="my-file-acts">
+            <button class="btn btn-ghost btn-xs" data-act="dl-myfile"
+              data-tid="${t.id}" data-rtype="${esc(f.rec_type)}" data-rid="${f.rec_id}"
+              data-fname="${esc(f.file_name)}" title="Yuklab olish">⬇️</button>
+            <button class="btn btn-ghost btn-xs btn-danger-ghost" data-act="del-myfile"
+              data-tid="${t.id}" data-rtype="${esc(f.rec_type)}" data-rid="${f.rec_id}"
+              data-fname="${esc(f.file_name)}" title="O'chirish">🗑️</button>
+          </div>
+        </div>`).join('')}
+    </div>` : '';
+
+  return `
+  <hr style="border:none;border-top:2px dashed var(--border);margin:8px 0">
+  ${progressHtml}
+  ${myFilesHtml}
+  <div class="sec-card" style="background:var(--primary-lt);border:1px solid var(--primary)">
+    <div class="sec-title" style="color:var(--primary)">📤 Rahbar yordamchisi topshirig'i</div>
+    <p style="font-size:12px;color:var(--hint);margin:0 0 8px">Rahbar yordamchisi sifatida o'z faylingizni ham yuklashingiz mumkin</p>
+    ${banner}
+    <div class="upload-area" id="uarea">
+      <input type="file" id="finput" multiple
+        accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.tar,.gz,.txt,.csv">
+      <span class="upload-icon">📁</span>
+      <span class="upload-lbl">Fayl yoki rasm tanlang</span>
+      <span class="upload-hint">Rasm, Word, Excel, PDF, ZIP/RAR arxiv · Bir nechta mumkin · Maks 50 MB</span>
+    </div>
+    <div style="margin-top:6px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+        📷 Kamera
+        <input id="finput-cam" type="file" accept="image/jpeg,image/png" capture="camera" style="display:none">
+      </label>
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+        🖼️ Galereya
+        <input id="finput-gallery" type="file" accept="image/*" multiple style="display:none">
+      </label>
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+        🗜️ Arxiv
+        <input id="finput-zip" type="file" accept=".zip,.rar,.7z,.tar,.gz" multiple style="display:none">
+      </label>
+    </div>
+    <div class="sel-files" id="sfiles"></div>
+    <textarea class="note-area" id="narea" rows="3"
+              placeholder="Izoh yozing…"></textarea>
+  </div>
+  <div class="submit-bar">
+    <button class="btn btn-primary btn-full" id="subbtn" data-act="submit" disabled>
+      📤 Topshiriqni yuborish
+    </button>
+  </div>`;
+}
+
+/* ── Rahbar: svodka ──────────────────────────────────────── */
+function mgrDetailPage() {
+  const t = S.activeTask;
+  if (!t) return '<div class="center-box"><p>Topshiriq topilmadi</p></div>';
+
+  const reqFiles = t.required_files || 0;
+  const total = t.total_count;
+  // Compute fully done vs partial from detail if available
+  let fullyDone = t.done_count, partialDone = 0;
+  if (S.detail && S.detail.submissions && reqFiles > 0) {
+    fullyDone = S.detail.submissions.filter(s => (s.file_count||0) >= reqFiles).length;
+    partialDone = S.detail.submissions.filter(s => (s.file_count||0) > 0 && (s.file_count||0) < reqFiles).length;
+  }
+  const p = pct(fullyDone, total);
+  const r = 42, circ = 2 * Math.PI * r;
+  const fillDone    = circ * (total ? fullyDone / total : 0);
+  const fillPartial = circ * (total ? partialDone / total : 0);
+  const rotPartial  = -90 + (fullyDone / (total || 1)) * 360;
+
+  const donut = `
+    <svg width="112" height="112" viewBox="0 0 112 112" role="img" aria-label="${p}% bajarildi">
+      <circle cx="56" cy="56" r="${r}" fill="none" stroke="var(--border)" stroke-width="12"/>
+      ${partialDone > 0 ? `<circle cx="56" cy="56" r="${r}" fill="none" stroke="#f59e0b" stroke-width="12"
+        stroke-dasharray="${fillPartial.toFixed(1)} ${(circ-fillPartial).toFixed(1)}"
+        stroke-linecap="round" transform="rotate(${rotPartial.toFixed(1)},56,56)"/>` : ''}
+      <circle cx="56" cy="56" r="${r}" fill="none" stroke="#22c55e" stroke-width="12"
+        stroke-dasharray="${fillDone.toFixed(1)} ${(circ - fillDone).toFixed(1)}"
+        stroke-linecap="round" transform="rotate(-90,56,56)"/>
+      <text x="56" y="52" text-anchor="middle" font-size="20" font-weight="800" fill="var(--text)">${p}%</text>
+      <text x="56" y="68" text-anchor="middle" font-size="10" fill="var(--hint)">to'liq</text>
+    </svg>`;
+
+  let subs;
+  if (!S.detail) {
+    subs = '<div class="center-box" style="min-height:80px;padding:16px"><div class="spinner"></div></div>';
+  } else if (!S.detail.submissions.length) {
+    subs = '<p class="text-hint text-sm">Hali hech kim topshirmagan</p>';
+  } else {
+    const reqFiles = t.required_files || 0;
+    subs = S.detail.submissions.map(s => {
+      const exif = exifDateStr(s.exif_date);
+      const exifHtml = exif
+        ? `<div style="font-size:10px;color:var(--hint);margin-top:2px">📷 Olingan: ${esc(exif)}</div>`
+        : '';
+      const deviceHtml = s.exif_device
+        ? `<div style="font-size:10px;color:var(--hint);margin-top:2px">📱 ${esc(s.exif_device)}</div>`
+        : '';
+      const oldHtml = s.is_old_photo
+        ? '<div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:2px">⚠️ Eski rasm — 24 soatdan oldin olingan</div>'
+        : '';
+      const locHtml = (s.submit_lat != null && s.submit_lon != null)
+        ? `<div style="font-size:11px;margin-top:3px">
+             📍 <a href="https://www.google.com/maps?q=${s.submit_lat},${s.submit_lon}" target="_blank"
+                  style="color:var(--primary);text-decoration:none">Yuborish joyi</a>
+             ${s.exif_gps ? `· <a href="https://www.google.com/maps?q=${esc(s.exif_gps)}" target="_blank"
+               style="color:var(--primary);text-decoration:none">Rasm olingan joy</a>` : ''}
+           </div>`
+        : s.exif_gps
+          ? `<div style="font-size:11px;margin-top:3px">
+               📍 <a href="https://www.google.com/maps?q=${esc(s.exif_gps)}" target="_blank"
+                    style="color:var(--primary);text-decoration:none">Rasm olingan joy</a>
+             </div>`
+          : '<div style="font-size:11px;color:var(--warning);margin-top:3px">📍 Joylashuv yo\'q</div>';
+      const fc = s.file_count || 0;
+      const fileCountHtml = reqFiles > 0
+        ? `<div style="font-size:11px;color:${fc >= reqFiles ? '#22c55e' : 'var(--hint)'};margin-top:2px">📎 ${fc}/${reqFiles} fayl yuklangan</div>`
+        : fc > 1
+          ? `<div style="font-size:11px;color:var(--hint);margin-top:2px">📎 ${fc} ta fayl</div>`
+          : '';
+      return `
+      <div class="sub-item">
+        <div class="sub-avatar">${esc(initials(s.full_name))}</div>
+        <div class="sub-info">
+          <div class="sub-name">${esc(s.full_name)}</div>
+          <div class="sub-time">${esc(fmtDate(s.submitted_at))}${s.note ? ' · ' + esc(String(s.note).slice(0,40)) : ''}</div>
+          ${fileCountHtml}${exifHtml}${deviceHtml}${oldHtml}${locHtml}
+        </div>
+        ${(s.file_id || s.has_local_file)
+          ? `<a class="btn btn-ghost btn-sm" href="/api/mgr/sub-dl/${t.id}/${s.employee_id}?${authQuery()}" download>⬇️</a>`
+          : '<span class="badge badge-wait">Faqat izoh</span>'}
+      </div>`;
+    }).join('');
+  }
+
+  return `
+  <div class="detail-body pad-nav">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
+      <button class="btn btn-ghost btn-sm" data-act="page" data-page="tasks">← Orqaga</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm btn-ghost" data-act="edit-deadline" data-id="${t.id}" style="color:var(--primary);border-color:var(--primary)">🗓 Muddat</button>
+        ${S.amSector === null ? `<button class="btn btn-sm" style="color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger)" data-act="delete-task" data-id="${t.id}">🗑️ O'chirish</button>` : ''}
+      </div>
+    </div>
+    ${taskHeaderHtml(t)}
+
+    <div class="sec-card">
+      <div class="sec-title">📊 Ijro svodkasi</div>
+      <div class="donut-wrap">
+        ${donut}
+        <div class="donut-legend">
+          <div class="legend-item"><span class="legend-dot" style="background:#22c55e"></span><span>✅ ${fullyDone} ta to'liq bajardi</span></div>
+          ${partialDone > 0 ? `<div class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span><span>⏳ ${partialDone} ta chala bajardi</span></div>` : ''}
+          <div class="legend-item"><span class="legend-dot" style="background:var(--border)"></span><span>❌ ${total - fullyDone - partialDone} ta bajarmadilar</span></div>
+          <div class="legend-item"><span class="legend-dot" style="background:var(--primary)"></span><span>Jami: ${total} ta xodim</span></div>
+        </div>
+      </div>
+      <div class="mt-12">
+        <button class="zip-btn" data-act="zip" data-id="${t.id}">
+          📦 ZIP ko'rinishda yuklash (barcha fayllar + Excel svodka)
+        </button>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-title">📎 Namuna fayllar</div>
+      ${fileListHtml(t.files, "Fayl biriktirilmagan")}
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-title">📋 Topshirganlar (${fullyDone + partialDone}/${total})${partialDone ? ` · ⏳ ${partialDone} ta chala` : ''}</div>
+      ${subs}
+    </div>
+    ${S.amSector !== null ? amSubmitSection() : ''}
+  </div>
+  <div id="dl-modal"></div>`;
+}
+
+/* ── Xodim: topshirish ───────────────────────────────────── */
+function empDetailPage() {
+  const t = S.activeTask;
+  if (!t) return '<div class="center-box"><p>Topshiriq topilmadi</p></div>';
+
+  const p = pct(t.done_count, t.total_count);
+  const req = t.required_files || 0;
+  const myCount = t.my_file_count || 0;
+
+  let fileProgressHtml = '';
+  if (req > 0) {
+    const fp = Math.min(100, Math.round(myCount / req * 100));
+    const fpCls = myCount >= req ? 'pg-done' : myCount > 0 ? 'pg-part' : '';
+    fileProgressHtml = `
+    <div class="sec-card" style="margin-bottom:0">
+      <div class="flex items-center justify-between" style="margin-bottom:6px">
+        <span style="font-size:13px;font-weight:600">📂 Fayl talabi</span>
+        <span style="font-size:13px;color:${myCount>=req?'var(--success)':'var(--warning)'};font-weight:700">${myCount}/${req}</span>
+      </div>
+      <div class="prog-bar"><div class="prog-fill ${fpCls}" style="width:${fp}%"></div></div>
+      <div class="form-hint" style="margin-top:4px">${myCount>=req?'✅ Yetarli fayl yuklandi':'Topshiriq bajarildi sanalishi uchun yana '+(req-myCount)+' ta fayl yuklang'}</div>
+    </div>`;
+  }
+
+  const banner = t.submitted_by_me ? `
+    <div class="submitted-banner">
+      <span class="sb-icon">✅</span>
+      <div>
+        <div class="sb-lbl">Topshirildi!</div>
+        ${t.my_submission && t.my_submission.file_name
+          ? `<div class="sb-sub">📎 ${esc(t.my_submission.file_name)}</div>` : ''}
+      </div>
+    </div>
+    <div class="resubmit-note">Qayta yuborish uchun yangi fayl tanlang yoki izohni yangilang</div>` : '';
+
+  const myFilesHtml = S.myFiles && S.myFiles.length ? `
+    <div class="sec-card">
+      <div class="sec-title">📂 Yuklagan fayllarim</div>
+      ${S.myFiles.map(f => `
+        <div class="my-file-row">
+          <span class="fi-icon">${fileIcon(f.file_name, '')}</span>
+          <span class="fi-name-sm">${esc(f.file_name)}</span>
+          <div class="my-file-acts">
+            <button class="btn btn-ghost btn-xs" data-act="dl-myfile"
+              data-tid="${t.id}" data-rtype="${esc(f.rec_type)}" data-rid="${f.rec_id}"
+              data-fname="${esc(f.file_name)}" title="Yuklab olish">⬇️</button>
+            <button class="btn btn-ghost btn-xs btn-danger-ghost" data-act="del-myfile"
+              data-tid="${t.id}" data-rtype="${esc(f.rec_type)}" data-rid="${f.rec_id}"
+              data-fname="${esc(f.file_name)}" title="O'chirish">🗑️</button>
+          </div>
+        </div>`).join('')}
+    </div>` : '';
+
+  const myPct = req > 0 ? Math.min(100, Math.round(myCount / req * 100)) : p;
+  const myMeta = req > 0
+    ? `<span class="text-hint">${myCount}/${req} fayl (${myPct}%)</span>`
+    : `<span class="text-hint">👥 ${t.done_count}/${t.total_count} (${p}%)</span>`;
+
+  return `
+  <div class="detail-body pad-nav">
+    ${backBtnHtml}
+    ${taskHeaderHtml(t, myMeta)}
+
+    ${fileProgressHtml}
+
+    ${myFilesHtml}
+
+    <div class="sec-card">
+      <div class="sec-title">📎 Rahbar fayllari</div>
+      ${fileListHtml(t.files, "Fayl biriktirilmagan")}
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-title">📤 Mening topshiriqim</div>
+      ${banner}
+      <div class="upload-area" id="uarea">
+        <input type="file" id="finput" multiple
+          accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.tar,.gz,.txt,.csv">
+        <span class="upload-icon">📁</span>
+        <span class="upload-lbl">Fayl yoki rasm tanlang</span>
+        <span class="upload-hint">Rasm, Word, Excel, PDF, ZIP/RAR arxiv · Bir nechta mumkin · Maks 50 MB</span>
+      </div>
+      <div style="margin-top:6px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+          📷 Kamera
+          <input id="finput-cam" type="file" accept="image/jpeg,image/png" capture="camera" style="display:none">
+        </label>
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+          🖼️ Galereya
+          <input id="finput-gallery" type="file" accept="image/*" multiple style="display:none">
+        </label>
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+          🗜️ Arxiv
+          <input id="finput-zip" type="file" accept=".zip,.rar,.7z,.tar,.gz" multiple style="display:none">
+        </label>
+      </div>
+      <div class="sel-files" id="sfiles"></div>
+      <textarea class="note-area" id="narea" rows="3"
+                placeholder="Izoh yozing (fayl bo'lmasa ham izoh bilan topshirish mumkin)…"></textarea>
+    </div>
+
+    <div class="submit-bar">
+      <button class="btn btn-primary btn-full" id="subbtn" data-act="submit" disabled>
+        📤 Topshiriqni yuborish
+      </button>
+    </div>
+  </div>`;
+}
+
+function onFilesPicked(files, replace) {
+  const newFiles = Array.prototype.slice.call(files);
+  S.selFiles = replace ? newFiles : S.selFiles.concat(newFiles);
+  const total = S.selFiles.reduce((a, f) => a + f.size, 0);
+  if (total > MAX_UPLOAD) {
+    showAlert(`Fayllar hajmi ${fsize(total)} — maksimum 50 MB. Kamroq fayl tanlang.`);
+    S.selFiles = replace ? [] : S.selFiles.slice(0, S.selFiles.length - newFiles.length);
+  }
+  renderSelFiles();
+}
+
+function removeFile(i) { S.selFiles.splice(i, 1); renderSelFiles(); }
+
+/* Minimal JPEG EXIF o'quvchi — qurilma, sana, GPS ni qaytaradi.
+   Faqat birinchi 64 KB o'qiladi (EXIF har doim boshida bo'ladi). */
+function _parseJpegExif(buf) {
+  try {
+    var dv = new DataView(buf), n = dv.byteLength;
+    if (n < 4 || dv.getUint16(0, false) !== 0xFFD8) return null;
+    for (var p = 2; p + 4 <= n;) {
+      var m = dv.getUint16(p, false), sl = dv.getUint16(p + 2, false);
+      if (m === 0xFFE1 && sl > 10 &&
+          dv.getUint32(p + 4, false) === 0x45786966 &&
+          dv.getUint16(p + 8, false) === 0) {
+        var B = p + 10;
+        var le = dv.getUint16(B, false) === 0x4949;
+        var u16 = function(o){return dv.getUint16(B+o,le);};
+        var u32 = function(o){return dv.getUint32(B+o,le);};
+        if (u16(2) !== 42) return null;
+        var out = {}, ifd = u32(4), nc = u16(ifd);
+        for (var i = 0; i < nc && i < 64; i++) {
+          var e = ifd+2+i*12, tag=u16(e), typ=u16(e+2), cnt=u32(e+4);
+          var sz=((typ===5||typ===10)?8:typ===4?4:typ===3?2:1)*cnt;
+          var vp=B+(sz>4?u32(e+8):e+8);
+          if (typ===2) {
+            var s='';
+            for(var j=0;j<cnt-1&&j<256;j++){var c=dv.getUint8(vp+j);if(!c)break;s+=String.fromCharCode(c);}
+            s=s.trim();
+            if((tag===0x9003||tag===0x9004)&&!out.date)out.date=s;
+            else if(tag===0x0132&&!out._dt)out._dt=s;  // fallback, sub-IFD ustunroq
+            else if(tag===0x010F)out._mk=s;
+            else if(tag===0x0110)out._md=s;
+          } else if(typ===4&&cnt===1&&tag===0x8769) out._exif=dv.getUint32(B+e+8,le);
+          else if(typ===4&&cnt===1&&tag===0x8825) out._gps=dv.getUint32(B+e+8,le);
+        }
+        // EXIF sub-IFD — DateTimeOriginal (0x9003) har doim IFD0 DateTime dan ustun
+        if (out._exif !== undefined) {
+          var ei=out._exif, en=u16(ei);
+          for (var i=0; i<en&&i<64; i++) {
+            var e2=ei+2+i*12, tag2=u16(e2), typ2=u16(e2+2), cnt2=u32(e2+4);
+            if (typ2===2 && (tag2===0x9003||tag2===0x9004)) {
+              var vp2=B+(cnt2>4?u32(e2+8):e2+8);
+              var s2='';
+              for(var j=0;j<cnt2-1&&j<32;j++){var c2=dv.getUint8(vp2+j);if(!c2)break;s2+=String.fromCharCode(c2);}
+              s2=s2.trim(); if(s2){out.date=s2;break;}
+            }
+          }
+        }
+        // Sub-IFD dan topilmagan bo'lsa IFD0 DateTime ni fallback sifatida ishlatamiz
+        if (!out.date && out._dt) out.date = out._dt;
+        delete out._exif; delete out._dt;
+        if (out._gps!==undefined) {
+          var gi=out._gps,gn=u16(gi),latR='N',lonR='E',lat=null,lon=null;
+          for(var i=0;i<gn&&i<32;i++){
+            var e=gi+2+i*12,tag=u16(e),typ=u16(e+2),cnt=u32(e+4);
+            var sz=(typ===5?8:1)*cnt,vp=B+(sz>4?u32(e+8):e+8);
+            if(typ===2){var ref=String.fromCharCode(dv.getUint8(vp));if(tag===1)latR=ref;else if(tag===3)lonR=ref;}
+            else if(typ===5&&cnt>=3){
+              var gd=dv.getUint32(vp,le),gdn=dv.getUint32(vp+4,le);
+              var gm=dv.getUint32(vp+8,le),gmn=dv.getUint32(vp+12,le);
+              var gs=dv.getUint32(vp+16,le),gsn=dv.getUint32(vp+20,le);
+              var dd=(gdn?gd/gdn:0)+(gmn?gm/gmn:0)/60+(gsn?gs/gsn:0)/3600;
+              if(tag===2)lat=dd;else if(tag===4)lon=dd;
+            }
+          }
+          if(lat!==null&&lon!==null){if(latR==='S')lat=-lat;if(lonR==='W')lon=-lon;out.gps=lat.toFixed(6)+','+lon.toFixed(6);}
+          delete out._gps;
+        }
+        if(out._mk||out._md){
+          var pts=[out._mk,out._md].filter(Boolean);
+          if(pts.length===2&&pts[1].startsWith(pts[0]))pts=[pts[1]];
+          out.device=pts.join(' ');
+        }
+        delete out._mk;delete out._md;
+        return(out.date||out.device||out.gps)?out:null;
+      }
+      if(sl<2)break;
+      p+=2+sl;
+    }
+  } catch(_) {}
+  return null;
+}
+
+function readExifFromFile(file) {
+  return new Promise(function(resolve) {
+    // MIME turini tekshirmaymiz — _parseJpegExif magic bytes (0xFFD8) orqali o'zi hal qiladi
+    var fr = new FileReader();
+    fr.onload = function(e){try{resolve(_parseJpegExif(e.target.result));}catch(_){resolve(null);}};
+    fr.onerror = function(){resolve(null);};
+    fr.readAsArrayBuffer(file.slice(0,65536));
+  });
+}
+
+/* Rasmni canvas orqali siqadi (JPEG, maks 1920px, 82% sifat).
+   Fayl kichik bo'lsa yoki rasm bo'lmasa o'zgarishsiz qaytaradi. */
+function compressImage(file) {
+  return new Promise(function(resolve) {
+    if (!file.type.startsWith('image/')) { resolve(file); return; }
+    if (file.size < 400 * 1024) { resolve(file); return; }
+    var img = new Image();
+    var url = URL.createObjectURL(file);
+    img.onload = function() {
+      URL.revokeObjectURL(url);
+      var MAX = 1920, w = img.naturalWidth, h = img.naturalHeight;
+      if (w > MAX || h > MAX) {
+        if (w >= h) { h = Math.round(h * MAX / w); w = MAX; }
+        else        { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(function(blob) {
+        if (!blob || blob.size >= file.size * 0.95) { resolve(file); return; }
+        var dot = file.name.lastIndexOf('.');
+        var base = dot > 0 ? file.name.slice(0, dot) : file.name;
+        resolve(new File([blob], base + '.jpg', {type:'image/jpeg'}));
+      }, 'image/jpeg', 0.82);
+    };
+    img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+/* Fayl YOKI izoh bo'lsa yuborish mumkin — server ikkalasini ham qabul qiladi */
+function refreshSubmitBtn() {
+  const btn = document.getElementById('subbtn');
+  if (btn) btn.disabled = !(S.selFiles.length || S.note.trim());
+}
+
+function renderSelFiles() {
+  const wrap = document.getElementById('sfiles');
+  const area = document.getElementById('uarea');
+  if (!wrap) return;
+  if (area) area.classList.toggle('has-files', S.selFiles.length > 0);
+  wrap.innerHTML = S.selFiles.map((f, i) => `
+    <div class="sel-file">
+      <span>${fileIcon(f.name, '')}</span>
+      <span class="sf-name">${esc(f.name)}</span>
+      <span class="sf-size">${fsize(f.size)}</span>
+      <button class="sf-del" data-act="rmfile" data-i="${i}">✕</button>
+    </div>`).join('');
+  refreshSubmitBtn();
+}
+
+async function doSubmit() {
+  if (!S.selFiles.length && !S.note.trim()) return;
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.innerHTML = `<div class="overlay-box"><div class="spinner"></div>
+    <div class="overlay-text">${S.selFiles.length ? `Optimallashtirilmoqda… 0/${S.selFiles.length}` : 'Yuborilmoqda…'}</div></div>`;
+  document.body.appendChild(ov);
+  const ovTxt = ov.querySelector('.overlay-text');
+
+  try {
+    // Rasmlarni siqish + EXIF siqishdan OLDIN o'qish
+    let filesToSend = S.selFiles;
+    const exifList = new Array(S.selFiles.length).fill(null);
+    if (S.selFiles.length) {
+      const compressed = [];
+      for (let i = 0; i < S.selFiles.length; i++) {
+        if (ovTxt) ovTxt.textContent = `Optimallashtirilmoqda… ${i+1}/${S.selFiles.length}`;
+        exifList[i] = await readExifFromFile(S.selFiles[i]);
+        compressed.push(await compressImage(S.selFiles[i]));
+      }
+      filesToSend = compressed;
+      if (ovTxt) ovTxt.textContent = `Yuklanmoqda… ${filesToSend.length} ta fayl`;
+    }
+
+    const coords = await getGeoCoords();
+    const fd = new FormData();
+    fd.append('task_id', S.activeTask.id);
+    if (S.note.trim()) fd.append('note', S.note.trim());
+    if (coords) { fd.append('lat', coords.lat); fd.append('lon', coords.lon); }
+    fd.append('exif_json', JSON.stringify(exifList));
+    filesToSend.forEach(f => fd.append('files[]', f));
+
+    const data = await api('/api/submit', {method:'POST', body: fd});
+    if (!data) return;                      // 401 — chiqarib yuborildi
+    if (data.error) throw new Error(data.error);
+
+    const t = S.tasks.find(x => x.id === S.activeTask.id);
+    if (t) {
+      t.submitted_by_me = data.submitted_by_me;
+      t.my_file_count   = data.my_file_count;
+      t.done_count      = data.done_count;
+      t.total_count     = data.total_count;
+      t.my_submission   = {file_name: S.selFiles.length ? S.selFiles[0].name : null,
+                           submitted_at: new Date().toISOString()};
+    }
+    ov.remove();
+    if (data.submitted_by_me) {
+      successOverlay(data.done_count, data.total_count);
+    } else {
+      partialUploadOverlay(data.my_file_count, data.req_files);
+    }
+  } catch (e) {
+    ov.remove();
+    showAlert('Xato: ' + e.message);
+  }
+}
+
+function successOverlay(done, total) {
+  const el = document.createElement('div');
+  el.className = 'success-overlay';
+  el.innerHTML = `<div class="success-icon">✅</div>
+    <div class="success-title">Topshirildi!</div>
+    <div class="success-sub">${done}/${total} xodim bajargan</div>`;
+  document.body.appendChild(el);
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+  setTimeout(() => { el.remove(); gotoPage('tasks'); }, 2200);
+}
+
+function partialUploadOverlay(myCount, req) {
+  const remaining = req - myCount;
+  const el = document.createElement('div');
+  el.className = 'success-overlay';
+  el.innerHTML = `<div class="success-icon">📤</div>
+    <div class="success-title">${myCount}/${req} fayl yuklandi</div>
+    <div class="success-sub">Yana ${remaining} ta fayl kerak</div>`;
+  document.body.appendChild(el);
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+  setTimeout(() => { el.remove(); gotoPage('tasks'); }, 2500);
+}
+
+/* Fayl nomi ?name= orqali uzatiladi — aks holda "file_12.docx" bo'lib tushadi */
+function dlFile(fileId, name) {
+  openUrl(`/api/file/${encodeURIComponent(fileId)}?${authQuery()}&name=${encodeURIComponent(name || 'fayl')}`);
+}
+
+function dlMyFile(tid, rtype, rid, fname) {
+  openUrl(`/api/my-files/${tid}/${rtype}/${rid}?${authQuery()}&name=${encodeURIComponent(fname||'fayl')}`);
+}
+
+async function deleteMyFile(tid, rtype, rid, fname) {
+  const ok = await showConfirm(`"${fname}" faylini o'chirasizmi?\nDiskdan ham o'chadi.`);
+  if (!ok) return;
+  const data = await api(`/api/my-files/${tid}/${rtype}/${rid}`, {method:'DELETE'});
+  if (!data || data.error) { showAlert('Xato: ' + (data?.error || 'server xatosi')); return; }
+  // Update task in state
+  const t = S.tasks.find(x => x.id === tid);
+  if (t) {
+    t.my_file_count   = data.my_file_count;
+    t.submitted_by_me = data.submitted_by_me;
+  }
+  // Remove from myFiles list
+  S.myFiles = S.myFiles.filter(f => !(f.rec_type === rtype && f.rec_id === rid));
+  if (S.activeTask && S.activeTask.id === tid) {
+    S.activeTask.my_file_count   = data.my_file_count;
+    S.activeTask.submitted_by_me = data.submitted_by_me;
+  }
+  updatePage();
+  toast('🗑️ Fayl o\'chirildi');
+}
+
+
+function dlZip(taskId) {
+  toast('📦 ZIP tayyorlanmoqda, biroz kuting…');
+  openUrl(`/api/tasks/${taskId}/zip?${authQuery()}`);
+}
+
+/* ════════════════════════════════════════════════════════════
+   Topshiriq yaratish
+   ════════════════════════════════════════════════════════════ */
+function createTaskPage() {
+  const amNote = S.amSector !== null
+    ? `<div class="form-hint" style="background:var(--primary-bg);color:var(--primary);padding:8px 10px;border-radius:8px;margin-bottom:12px">
+         🔵 Bu topshiriq faqat <strong>${S.amSector}-sektor</strong> xodimlariga ko'rinadi
+       </div>`
+    : '';
+  return `
+  <div class="detail-body pad-nav">
+    <div class="sec-card">
+      <div class="sec-title">➕ Yangi topshiriq yaratish</div>
+      ${amNote}
+      <div class="form-group">
+        <label class="form-label" for="ct-title">Topshiriq nomi *</label>
+        <input class="form-input" id="ct-title" type="text" placeholder="Masalan: Hisobot tayyorlash">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="ct-desc">Batafsil tavsif</label>
+        <textarea class="form-input" id="ct-desc" placeholder="Topshiriq haqida batafsil…"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="ct-dl">Muddat</label>
+        <input class="form-input" id="ct-dl" type="datetime-local">
+        <div class="form-hint">Bo'sh qoldirsangiz topshiriq muddatsiz ochiq qoladi</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="ct-reqfiles">Talab qilinadigan fayllar soni</label>
+        <input class="form-input" id="ct-reqfiles" type="number" min="0" max="100" value="0" placeholder="0">
+        <div class="form-hint">Hodim shu qadar fayl yuklasa topshiriq bajarildi hisoblanadi (0 = cheklov yo'q)</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Kimga tayinlash</label>
+        <div class="assign-toggle" id="ct-assign-toggle">
+          <button class="assign-toggle-btn active" data-val="all">👥 Barcha hodimlar</button>
+          <button class="assign-toggle-btn" data-val="specific">🎯 Alohida hodimlar</button>
+        </div>
+      </div>
+      <div class="form-group" id="ct-assignee-wrap" style="display:none">
+        <label class="form-label">Hodimlarni tanlang</label>
+        <div class="emp-checklist" id="ct-emp-list"></div>
+        <div class="form-hint" id="ct-assign-hint"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Namuna fayllar (ixtiyoriy)</label>
+        <div class="upload-area" id="ct-uarea" style="padding:14px 12px">
+          <input type="file" id="ct-finput" multiple style="display:none"
+            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.tar,.gz,.txt,.csv">
+          <span class="upload-icon" style="font-size:22px">📎</span>
+          <span class="upload-lbl">Namuna fayl biriktirish</span>
+          <span class="upload-hint">Hodimlar ko'rishi uchun shablon yoki namuna fayllar</span>
+        </div>
+        <div class="sel-files" id="ct-sfiles"></div>
+      </div>
+      <div class="form-error" id="ct-err"></div>
+      <button class="btn btn-primary btn-full" id="ct-btn" data-act="create-task">✅ Topshiriq yaratish</button>
+    </div>
+  </div>`;
+}
+
+function initDeadlineField() {
+  const inp = document.getElementById('ct-dl');
+  if (!inp) return;
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(18, 0, 0, 0);
+  inp.value = localInputValue(d);        // mahalliy vaqt, UTC emas
+
+  // Namuna fayl yuklash maydonini sozlash
+  S.ctFiles = [];
+  S.ctAssignees = [];
+  const area   = document.getElementById('ct-uarea');
+  const finput = document.getElementById('ct-finput');
+  if (area && finput) {
+    area.addEventListener('click', () => finput.click());
+    finput.addEventListener('change', () => {
+      const arr = Array.prototype.slice.call(finput.files || []);
+      S.ctFiles = S.ctFiles.concat(arr);
+      renderCtFiles();
+    });
+  }
+
+  // Tayinlash toggle
+  const toggle = document.getElementById('ct-assign-toggle');
+  if (toggle) {
+    toggle.querySelectorAll('.assign-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        toggle.querySelectorAll('.assign-toggle-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const wrap = document.getElementById('ct-assignee-wrap');
+        if (wrap) wrap.style.display = btn.dataset.val === 'specific' ? '' : 'none';
+        if (btn.dataset.val === 'specific') renderCtEmpList();
+      });
+    });
+  }
+}
+
+function renderCtEmpList() {
+  const wrap = document.getElementById('ct-emp-list');
+  const hint = document.getElementById('ct-assign-hint');
+  if (!wrap) return;
+  const emps = (S.employees || []).filter(e => e.active && !e.is_assistant_manager);
+  if (!emps.length) {
+    wrap.innerHTML = '<div class="form-hint" style="padding:8px">Faol xodimlar yo\'q</div>';
+    return;
+  }
+  wrap.innerHTML = emps.map(e => `
+    <label class="emp-check-item">
+      <input type="checkbox" class="emp-check" data-id="${e.tg_id}" ${(S.ctAssignees||[]).includes(e.tg_id) ? 'checked' : ''}>
+      <span>${esc(e.full_name)}${e.position ? `<span class="text-hint" style="font-size:11px;margin-left:4px">(${esc(e.position)})</span>` : ''}</span>
+    </label>`).join('');
+  wrap.querySelectorAll('.emp-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const id = parseInt(cb.dataset.id, 10);
+      if (cb.checked) {
+        if (!(S.ctAssignees || []).includes(id)) S.ctAssignees = [...(S.ctAssignees||[]), id];
+      } else {
+        S.ctAssignees = (S.ctAssignees||[]).filter(x => x !== id);
+      }
+      if (hint) hint.textContent = S.ctAssignees.length ? `${S.ctAssignees.length} ta hodim tanlandi` : '';
+    });
+  });
+}
+
+function renderCtFiles() {
+  const wrap = document.getElementById('ct-sfiles');
+  const area = document.getElementById('ct-uarea');
+  if (!wrap) return;
+  if (area) area.classList.toggle('has-files', S.ctFiles.length > 0);
+  wrap.innerHTML = (S.ctFiles || []).map((f, i) => `
+    <div class="sel-file">
+      <span>${fileIcon(f.name, '')}</span>
+      <span class="sel-fname">${esc(f.name)}</span>
+      <span class="sel-fsize">${fsize(f.size)}</span>
+      <button class="sel-rm" data-act="ctfile-rm" data-i="${i}">✕</button>
+    </div>`).join('');
+}
+
+async function doCreateTask() {
+  const title   = ((document.getElementById('ct-title')    || {}).value || '').trim();
+  const desc    = ((document.getElementById('ct-desc')     || {}).value || '').trim();
+  const dlRaw   =  (document.getElementById('ct-dl')       || {}).value || '';
+  const reqRaw  =  (document.getElementById('ct-reqfiles') || {}).value || '0';
+  const btn     = document.getElementById('ct-btn');
+
+  if (!title) { formError('ct-err', 'Topshiriq nomini kiriting'); return; }
+
+  const useSpecific = document.querySelector('#ct-assign-toggle .assign-toggle-btn.active')?.dataset.val === 'specific';
+  if (useSpecific && (S.ctAssignees || []).length === 0) {
+    formError('ct-err', 'Kamida bitta hodimni tanlang'); return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Saqlanmoqda…'; }
+  formError('ct-err', '');
+  try {
+    const fd = new FormData();
+    fd.append('title', title);
+    if (desc) fd.append('description', desc);
+    if (dlRaw) fd.append('deadline', localToIso(dlRaw));
+    fd.append('required_files', String(Math.max(0, parseInt(reqRaw, 10) || 0)));
+    if (useSpecific && S.ctAssignees && S.ctAssignees.length) {
+      fd.append('assignees', JSON.stringify(S.ctAssignees));
+    }
+    (S.ctFiles || []).forEach(f => fd.append('files[]', f, f.name));
+
+    const data = await api('/api/tasks', {method:'POST', body: fd});
+    if (!data) return;
+    if (data.error) throw new Error(data.error);
+    S.ctFiles = [];
+    S.ctAssignees = [];
+    if (await loadTasks()) { toast('✅ Topshiriq yaratildi!'); render({page:'tasks'}); }
+  } catch (e) {
+    formError('ct-err', e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✅ Topshiriq yaratish'; }
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   Xodimlar
+   ════════════════════════════════════════════════════════════ */
+async function loadEmployees() {
+  const d = await api('/api/employees');
+  if (d && !d.error) S.employees = d.employees || [];
+  else if (d && d.error) showAlert(d.error);
+}
+
+function employeesPage() {
+  const emps   = S.employees;
+  const active = emps.filter(e => e.active).length;
+  const canEdit = S.amSector === null;
+
+  const rows = emps.length ? emps.map(e => {
+    const sectorBadge = e.sector
+      ? `<span class="badge" style="background:var(--primary-bg);color:var(--primary);font-size:10px">${e.sector}-sektor</span>`
+      : '';
+    const amBadge = e.is_assistant_manager
+      ? `<span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px">R.Y.</span>`
+      : '';
+    return `
+    <tr class="${e.active ? '' : 'emp-inactive'}">
+      <td>
+        <div style="font-weight:600">${esc(e.full_name)} ${sectorBadge} ${amBadge}</div>
+        ${e.position ? `<div class="text-hint" style="font-size:12px">${esc(e.position)}</div>` : ''}
+      </td>
+      <td class="hide-sm">${esc(e.login_phone || '—')}</td>
+      <td class="hide-sm">${e.has_password
+        ? '<span class="badge badge-done">✅ Bor</span>'
+        : "<span class=\"badge badge-over\">❌ Yo'q</span>"}</td>
+      <td>${e.active
+        ? '<span class="badge badge-done">✅ Faol</span>'
+        : '<span class="badge badge-over">⛔ Nofaol</span>'}</td>
+      <td>
+        ${canEdit ? `<div class="flex gap-8">
+          <button class="btn btn-ghost btn-sm" data-act="emp-edit" data-id="${e.tg_id}">✏️</button>
+          <button class="btn btn-ghost btn-sm" data-act="emp-del"  data-id="${e.tg_id}">🗑️</button>
+        </div>` : '—'}
+      </td>
+    </tr>`;
+  }).join('')
+    : `<tr><td colspan="5" class="text-hint" style="text-align:center;padding:20px">
+         Xodimlar yo'q${canEdit ? '. "Qo\'shish" tugmasini bosing' : ''}.</td></tr>`;
+
+  return `
+  <div class="detail-body pad-nav">
+    <div class="sec-card">
+      <div class="flex items-center justify-between" style="margin-bottom:12px">
+        <div>
+          <div style="font-size:17px;font-weight:700">Xodimlar${S.amSector !== null ? ` (${S.amSector}-sektor)` : ''}</div>
+          <div class="text-hint text-sm">${active} faol / ${emps.length} jami</div>
+        </div>
+        ${canEdit ? '<button class="btn btn-primary btn-sm" data-act="emp-add">➕ Qo\'shish</button>' : ''}
+      </div>
+      <div class="table-wrap">
+        <table class="emp-table">
+          <thead><tr>
+            <th>Ism Sharif</th><th class="hide-sm">Telefon</th>
+            <th class="hide-sm">Parol</th><th>Holat</th><th>Amal</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div id="emp-modal"></div>
+  <div id="dl-modal"></div>`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   Real-time joylashuv nazorati (faqat rahbar)
+   ════════════════════════════════════════════════════════════ */
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ── Real-vaqt yangilanishlari (SSE) ──────────────────────
+let _sse = null, _sseReconnect = null;
+
+function startSSE() {
+  if (_sse || IS_TG) return;
+  const token = Store.getToken();
+  if (!token) return;
+  _sse = new EventSource('/api/events?token=' + encodeURIComponent(token));
+  _sse.addEventListener('task_update', async () => {
+    const wasOnTasks  = S.page === 'tasks';
+    const wasOnDetail = S.page === 'task-detail';
+    const prevTaskId  = S.activeTask;
+    await loadTasks();
+    if (wasOnTasks)  { render({page:'tasks'}); return; }
+    if (wasOnDetail) {
+      const still = S.tasks.find(t => t.id === prevTaskId);
+      if (still) { S.activeTask = prevTaskId; render({page:'task-detail'}); }
+      else       { render({page:'tasks'}); }
+    }
+  });
+  _sse.onerror = () => {
+    _sse && _sse.close();
+    _sse = null;
+    // 10 soniyadan keyin qayta ulanish
+    _sseReconnect = setTimeout(() => { _sseReconnect = null; startSSE(); }, 10000);
+  };
+}
+
+function stopSSE() {
+  if (_sseReconnect) { clearTimeout(_sseReconnect); _sseReconnect = null; }
+  if (_sse)          { _sse.close(); _sse = null; }
+}
+
+// ── Hodim jonli lokatsiyasi ───────────────────────────────
+let _locWatcher = null, _locInterval = null, _lastLocSent = 0;
+
+function startLocationTracking() {
+  if (S.isManager || !navigator.geolocation) return;
+  if (_locWatcher !== null) return;
+
+  const onPos = pos => {
+    const now = Date.now();
+    if (now - _lastLocSent < 25000) return;
+    _lastLocSent = now;
+    _pushLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+  };
+
+  _locWatcher = navigator.geolocation.watchPosition(onPos, () => {},
+    { enableHighAccuracy: true, maximumAge: 15000 });
+
+  _locInterval = setInterval(() => {
+    navigator.geolocation.getCurrentPosition(onPos, () => {},
+      { enableHighAccuracy: true, timeout: 8000 });
+  }, 60000);
+}
+
+function stopLocationTracking() {
+  if (_locWatcher  !== null) { navigator.geolocation.clearWatch(_locWatcher); _locWatcher  = null; }
+  if (_locInterval !== null) { clearInterval(_locInterval);                   _locInterval = null; }
+}
+
+async function _pushLocation(lat, lon, accuracy) {
+  try {
+    await fetch('/api/location', {
+      method: 'POST',
+      headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+      body: JSON.stringify({lat, lon, accuracy: accuracy || null}),
+    });
+  } catch (_) {}
+}
+
+// ── Rahbar: xodimlar ro'yhati (live holat) ──────────────
+function mapPage() {
+  return `
+  <div class="detail-body pad-nav">
+    <div class="sec-card">
+      <div class="flex items-center justify-between" style="margin-bottom:12px">
+        <div>
+          <div style="font-size:17px;font-weight:700">📍 Joylashuv nazorati</div>
+          <div class="text-hint text-sm">Xodimni bosing — harakatlar tarixini ko'ring</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-act="page" data-page="map">🔄 Yangilash</button>
+      </div>
+      <div id="live-list">
+        <div class="center-box" style="padding:24px"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function loadLiveMap() {
+  const wrap = document.getElementById('live-list');
+  if (!wrap) return;
+
+  const data = await api('/api/location/live');
+  if (!data || data.error) {
+    wrap.innerHTML = `<p class="text-hint" style="padding:16px;text-align:center">${esc((data&&data.error)||'Xatolik')}</p>`;
+    return;
+  }
+
+  const emps = data.data || [];
+  if (!emps.length) {
+    wrap.innerHTML = '<p class="text-hint" style="text-align:center;padding:24px">Xodimlar yo\'q.</p>';
+    return;
+  }
+
+  const online  = emps.filter(e => e.minutes_ago !== null && e.minutes_ago <= 10);
+  const offline = emps.filter(e => e.minutes_ago === null || e.minutes_ago > 10);
+
+  const mkCard = e => {
+    const isOnline = e.minutes_ago !== null && e.minutes_ago <= 10;
+    const dot   = isOnline ? '🟢' : '🔴';
+    const when  = e.minutes_ago === null ? 'Hech qachon kirmagan'
+                : e.minutes_ago < 60    ? `${e.minutes_ago} daqiqa oldin (${e.recorded_at})`
+                : e.minutes_ago < 1440  ? `${Math.floor(e.minutes_ago/60)} soat oldin`
+                : '1+ kun oldin';
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:12px;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-weight:600">${dot} ${esc(e.name)}</div>
+        ${e.position ? `<div class="text-hint" style="font-size:12px">${esc(e.position)}</div>` : ''}
+        <div style="font-size:12px;color:var(--hint);margin-top:2px">${esc(when)}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" data-act="track-emp" data-id="${e.tg_id}" data-name="${esc(e.name)}">
+        🗺️ Ko'rish
+      </button>
+    </div>`;
+  };
+
+  wrap.innerHTML = `
+    <div style="font-size:12px;color:var(--hint);margin-bottom:8px;padding:0 4px">
+      🟢 Faol (10 daqiqa ichida): <b>${online.length}</b> &nbsp;
+      🔴 Oflayn: <b>${offline.length}</b>
+    </div>
+    ${emps.map(mkCard).join('')}`;
+}
+
+// ── Rahbar: bitta xodimning harakatlar xaritasi ─────────
+function trackEmpPage() {
+  const today = todayStr();
+  return `
+  <div class="detail-body pad-nav">
+    <div class="sec-card" style="margin-bottom:12px">
+      <div class="flex items-center gap-8" style="margin-bottom:10px">
+        <button class="btn btn-ghost btn-sm" data-act="track-back">← Orqaga</button>
+        <div style="font-weight:700;font-size:16px">${esc(S.trackEmpName)} — harakat xaritasi</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="track-date-input" value="${today}" max="${today}"
+               style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;
+                      background:var(--surface);color:var(--text);font-size:14px">
+        <button class="btn btn-primary btn-sm" data-act="track-date">Ko'rish</button>
+      </div>
+    </div>
+    <div class="sec-card" style="padding:0;overflow:hidden;margin-bottom:12px">
+      <div id="emp-track-map" style="width:100%;height:360px;background:var(--bg)"></div>
+    </div>
+    <div class="sec-card">
+      <div id="emp-track-table">
+        <div class="center-box" style="padding:24px"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+let _empMap = null;
+
+async function loadEmpTrack(date) {
+  date = date || todayStr();
+  const mapEl  = document.getElementById('emp-track-map');
+  const tblEl  = document.getElementById('emp-track-table');
+  if (!mapEl || !tblEl) return;
+
+  if (tblEl) tblEl.innerHTML = '<div class="center-box" style="padding:24px"><div class="spinner"></div></div>';
+
+  const data = await api(`/api/location/${S.trackEmpId}?date=${encodeURIComponent(date)}`);
+  if (!data || data.error) {
+    tblEl.innerHTML = `<p class="text-hint" style="padding:16px;text-align:center">${esc((data&&data.error)||'Xatolik')}</p>`;
+    return;
+  }
+
+  const pts = data.points || [];
+
+  if (!pts.length) {
+    if (_empMap) { _empMap.remove(); _empMap = null; }
+    mapEl.innerHTML = `<div class="center-box" style="padding:40px;color:var(--hint)">${esc(date)} kuni joylashuv ma'lumoti yo'q.</div>`;
+    tblEl.innerHTML = '';
+    return;
+  }
+
+  // Leaflet xarita
+  if (typeof L !== 'undefined') {
+    if (_empMap) { _empMap.remove(); _empMap = null; }
+    mapEl.innerHTML = '';
+    const center = [pts[Math.floor(pts.length/2)].lat, pts[Math.floor(pts.length/2)].lon];
+    _empMap = L.map('emp-track-map').setView(center, 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(_empMap);
+
+    // Marshrut chizig'i
+    const latlngs = pts.map(p => [p.lat, p.lon]);
+    L.polyline(latlngs, {color:'#2678b6', weight:3, opacity:0.8}).addTo(_empMap);
+
+    // Bosh nuqta (yashil)
+    const greenIcon = L.divIcon({html:'<div style="background:#16a34a;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px #0004"></div>', iconSize:[14,14], iconAnchor:[7,7]});
+    // Oxirgi nuqta (qizil)
+    const redIcon   = L.divIcon({html:'<div style="background:#dc2626;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px #0004"></div>', iconSize:[14,14], iconAnchor:[7,7]});
+    // Oraliq nuqtalar (ko'k)
+    const blueIcon  = L.divIcon({html:'<div style="background:#2678b6;width:8px;height:8px;border-radius:50%;border:1px solid #fff"></div>', iconSize:[8,8], iconAnchor:[4,4]});
+
+    pts.forEach((p, i) => {
+      const icon = i === 0 ? greenIcon : i === pts.length-1 ? redIcon : blueIcon;
+      L.marker([p.lat, p.lon], {icon})
+        .bindPopup(`<b>${i===0?'🟢 Boshlanish':i===pts.length-1?'🔴 Oxirgi':'📍'}</b><br>⏰ ${esc(p.time)}<br>${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`)
+        .addTo(_empMap);
+    });
+
+    _empMap.fitBounds(L.latLngBounds(latlngs), {padding:[20,20]});
+  } else {
+    mapEl.innerHTML = '<p class="text-hint" style="text-align:center;padding:20px">Xarita yuklanmoqda…</p>';
+  }
+
+  // Jadval / vaqt chizig'i
+  const rows = pts.map((p, i) => `
+    <tr>
+      <td style="font-size:12px;color:var(--hint);white-space:nowrap">${esc(p.time)}</td>
+      <td>
+        ${i===0 ? '<span class="badge badge-done">🟢 Start</span> ' : ''}
+        ${i===pts.length-1 ? '<span class="badge badge-over">🔴 Oxirgi</span> ' : ''}
+      </td>
+      <td>
+        <a href="https://www.google.com/maps?q=${p.lat},${p.lon}" target="_blank"
+           style="color:var(--primary);font-size:12px;text-decoration:none">
+          ${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}
+        </a>
+      </td>
+    </tr>`).join('');
+
+  tblEl.innerHTML = `
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">
+      ${esc(date)} — ${pts.length} ta nuqta qayd etildi
+    </div>
+    <div class="table-wrap" style="max-height:260px;overflow-y:auto">
+      <table class="emp-table">
+        <thead><tr><th>Vaqt</th><th>Belgi</th><th>Koordinata (Google Maps)</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function openEmpModal(tgId) {
+  const emp  = tgId != null ? S.employees.find(e => e.tg_id === tgId) : null;
+  const edit = !!emp;
+  const c    = document.getElementById('emp-modal');
+  if (!c) return;
+
+  c.innerHTML = `
+  <div class="modal-overlay" data-act="modal-bg">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title">${edit ? '✏️ Xodimni tahrirlash' : '➕ Yangi xodim'}</div>
+        <button class="modal-close" data-act="emp-close">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="em-name">Ism Sharif *</label>
+        <input class="form-input" id="em-name" type="text"
+               placeholder="Qodirov Sherzod Aliyevich" value="${esc(emp && emp.full_name)}">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="em-pos">Lavozim</label>
+        <input class="form-input" id="em-pos" type="text"
+               placeholder="Yetakchi mutaxassis" value="${esc(emp && emp.position)}">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="em-phone">Login telefon *</label>
+        <input class="form-input" id="em-phone" type="tel"
+               placeholder="+998901234567" value="${esc(emp && emp.login_phone)}">
+        <div class="form-hint">Xodim shu raqam bilan tizimga kiradi</div>
+      </div>
+      ${!edit ? `
+      <div class="form-group">
+        <label class="form-label" for="em-tgid">Telegram ID (ixtiyoriy)</label>
+        <input class="form-input" id="em-tgid" type="number" min="1"
+               placeholder="1234567890">
+        <div class="form-hint">Botdagi /id buyrug'idan bilib oling — guruh topshiriqlarini bog'lash uchun</div>
+      </div>` : ''}
+      <div class="form-group">
+        <label class="form-label" for="em-pw">${edit ? "Yangi parol (bo'sh = o'zgarmaydi)" : 'Parol *'}</label>
+        <div class="pw-wrap">
+          <input class="form-input" id="em-pw" type="password"
+                 placeholder="${edit ? 'Yangi parol (ixtiyoriy)' : 'Parol kiriting'}">
+          <button class="pw-eye" type="button" data-act="pw-eye" data-target="em-pw">👁️</button>
+        </div>
+        <div class="pw-bar"><div class="pw-fill" id="pwfill"></div></div>
+        <div class="pw-text" id="pwtxt"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="em-sector">Sektor</label>
+        <select class="form-input" id="em-sector">
+          <option value="" ${!(emp && emp.sector) ? 'selected' : ''}>— Sektor tanlanmagan —</option>
+          <option value="1" ${emp && emp.sector == 1 ? 'selected' : ''}>1-sektor</option>
+          <option value="2" ${emp && emp.sector == 2 ? 'selected' : ''}>2-sektor</option>
+          <option value="3" ${emp && emp.sector == 3 ? 'selected' : ''}>3-sektor</option>
+          <option value="4" ${emp && emp.sector == 4 ? 'selected' : ''}>4-sektor</option>
+        </select>
+        <div class="form-hint">Xodim qaysi sektorga tegishli</div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="em-am" ${emp && emp.is_assistant_manager ? 'checked' : ''}
+                 style="width:16px;height:16px;accent-color:var(--primary)">
+          <span class="form-label" style="margin:0">Rahbar Yordamchisi</span>
+        </label>
+        <div class="form-hint">Bu xodim o'z sektori uchun topshiriq bera oladi</div>
+      </div>
+      ${edit ? `
+      <div class="form-group">
+        <label class="form-label" for="em-active">Holat</label>
+        <select class="form-input" id="em-active">
+          <option value="1" ${emp.active ? 'selected' : ''}>✅ Faol</option>
+          <option value="0" ${emp.active ? '' : 'selected'}>⛔ Nofaol</option>
+        </select>
+      </div>` : ''}
+      <div class="form-error" id="em-err"></div>
+      <button class="btn btn-primary btn-full" data-act="emp-save" data-id="${edit ? tgId : ''}">
+        ${edit ? '💾 Saqlash' : "➕ Xodim qo'shish"}
+      </button>
+    </div>
+  </div>`;
+
+  const pw = document.getElementById('em-pw');
+  if (pw) pw.addEventListener('input', () => pwStrength(pw.value));
+}
+
+function closeEmpModal() {
+  const c = document.getElementById('emp-modal');
+  if (c) c.innerHTML = '';
+}
+
+function pwStrength(v) {
+  const fill = document.getElementById('pwfill'), txt = document.getElementById('pwtxt');
+  if (!fill || !txt) return;
+  let sc = 0;
+  if (v.length >= 6) sc++;
+  if (v.length >= 8) sc++;
+  if (/[0-9]/.test(v) && /[a-zA-Z]/.test(v)) sc++;
+  if (/[^a-zA-Z0-9]/.test(v)) sc++;
+  const widths = [0, 25, 50, 75, 100];
+  const colors = ['', '#ef4444', '#f59e0b', '#22c55e', '#16a34a'];
+  const labels = ['', 'Juda zaif', 'Zaif', 'Yaxshi', 'Kuchli'];
+  fill.style.width      = widths[sc] + '%';
+  fill.style.background = colors[sc];
+  txt.textContent = v ? labels[sc] : '';
+  txt.style.color = colors[sc];
+}
+
+async function saveEmp(tgId) {
+  const val   = id => ((document.getElementById(id) || {}).value || '').trim();
+  const name  = val('em-name'), pos = val('em-pos'), phone = val('em-phone');
+  const pw    = (document.getElementById('em-pw') || {}).value || '';
+  const activeEl = document.getElementById('em-active');
+
+  if (!name || !phone)      { formError('em-err', 'Ism va telefon majburiy'); return; }
+  if (tgId == null && !pw)  { formError('em-err', 'Parol majburiy'); return; }
+
+  formError('em-err', '');
+  const sectorVal = (document.getElementById('em-sector') || {}).value || '';
+  const sectorNum = sectorVal ? parseInt(sectorVal, 10) : null;
+  const isAM      = !!(document.getElementById('em-am') || {}).checked;
+
+  try {
+    let data;
+    if (tgId == null) {
+      const body = {full_name:name, position:pos, login_phone:phone, password:pw};
+      const tgIdVal = (document.getElementById('em-tgid') || {}).value || '';
+      if (tgIdVal) { const n = parseInt(tgIdVal, 10); if (n > 0) body.tg_id = n; }
+      if (sectorNum) body.sector = sectorNum;
+      body.is_assistant_manager = isAM ? 1 : 0;
+      data = await api('/api/employees', {method:'POST', body});
+    } else {
+      const body = {full_name:name, position:pos, login_phone:phone,
+                    active: activeEl ? parseInt(activeEl.value, 10) : 1};
+      if (pw) body.password = pw;
+      if (sectorNum) body.sector = sectorNum; else body.sector = null;
+      body.is_assistant_manager = isAM ? 1 : 0;
+      data = await api(`/api/employees/${tgId}`, {method:'PUT', body});
+    }
+    if (!data) return;
+    if (data.error) throw new Error(data.error);
+    closeEmpModal();
+    await loadEmployees();
+    render({page:'employees'});
+    toast(tgId == null ? "✅ Xodim qo'shildi" : '✅ Xodim yangilandi');
+  } catch (e) {
+    formError('em-err', e.message);
+  }
+}
+
+async function delEmp(tgId) {
+  const emp = S.employees.find(e => e.tg_id === tgId);
+  const ok  = await showConfirm(`"${emp ? emp.full_name : 'Xodim'}" ni o'chirishni tasdiqlaysizmi?`);
+  if (!ok) return;
+  const data = await api(`/api/employees/${tgId}`, {method:'DELETE'});
+  if (!data) return;
+  if (data.error) { showAlert(data.error); return; }
+  await loadEmployees();
+  render({page:'employees'});
+  toast("🗑️ Xodim o'chirildi");
+}
+
+/* ════════════════════════════════════════════════════════════
+   Tarix
+   ════════════════════════════════════════════════════════════ */
+function historyPage() {
+  const f = S.histFilter || {status:'all', search:'', date:null};
+  return `
+  <div class="detail-body pad-nav" style="display:flex;flex-direction:column;gap:12px;padding-top:14px">
+    <div class="sec-card">
+      <div style="margin-bottom:10px">
+        <div style="font-size:16px;font-weight:700">📅 Tarix</div>
+        <div class="text-hint text-sm">Barcha topshiriqlar — ochiq va yopilgan</div>
+      </div>
+      <input type="text" id="hist-search" class="hist-search"
+             placeholder="🔍 Qidirish..." value="${esc(f.search)}">
+      <div style="display:flex;gap:4px;margin-top:8px">
+        <button class="hist-st-btn ${f.status==='all'?'active':''}" data-act="hist-status" data-status="all">Hammasi</button>
+        <button class="hist-st-btn ${f.status==='open'?'active':''}" data-act="hist-status" data-status="open">Ochiq</button>
+        <button class="hist-st-btn ${f.status==='closed'?'active':''}" data-act="hist-status" data-status="closed">Yopilgan</button>
+      </div>
+    </div>
+    <div class="sec-card" id="hist-calendar">
+      <div class="center-box" style="padding:12px"><div class="spinner"></div></div>
+    </div>
+    <div class="sec-card" id="hist-list">
+      <div class="center-box" style="padding:24px"><div class="spinner"></div></div>
+    </div>
+  </div>`;
+}
+
+async function loadHistory() {
+  if (!S.histFilter) S.histFilter = {status:'all', search:'', date:null};
+  const data = await api('/api/tasks/history');
+  const wrap = document.getElementById('hist-list');
+
+  if (!data || data.error) {
+    if (wrap) wrap.innerHTML = `<p class="text-hint" style="text-align:center;padding:20px">${esc((data&&data.error)||'Xatolik')}</p>`;
+    return;
+  }
+
+  S.history = data.tasks || [];
+  renderCalendar();
+  renderHistList();
+}
+
+function renderCalendar() {
+  const wrap = document.getElementById('hist-calendar');
+  if (!wrap) return;
+
+  const year  = S.histCalYear;
+  const month = S.histCalMonth;
+  const now   = new Date();
+
+  const byDate = {};
+  (S.history || []).forEach(t => {
+    if (!t.deadline) return;
+    const d = t.deadline.split('T')[0];
+    if (!byDate[d]) byDate[d] = {open:0, closed:0};
+    if (t.status === 'open') byDate[d].open++; else byDate[d].closed++;
+  });
+
+  const monthLbl = new Date(year, month, 1).toLocaleDateString('uz-UZ', {year:'numeric', month:'long'});
+  const dayNames = ['Du','Se','Ch','Pa','Ju','Sh','Ya'];
+  let startDow = new Date(year, month, 1).getDay();
+  startDow = (startDow + 6) % 7;
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+
+  let cells = '';
+  for (let i = 0; i < startDow; i++) cells += '<div class="cal-cell"></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const info = byDate[ds];
+    const isToday = year===now.getFullYear()&&month===now.getMonth()&&d===now.getDate();
+    const isSel   = S.histFilter && S.histFilter.date === ds;
+    let dots = '';
+    if (info) {
+      if (info.open)   dots += '<span class="cal-dot cal-dot-open"></span>';
+      if (info.closed) dots += '<span class="cal-dot cal-dot-closed"></span>';
+    }
+    cells += `<div class="cal-cell ${isToday?'cal-today':''} ${isSel?'cal-selected':''} ${info?'cal-has-tasks':''}"
+                   ${info?`data-act="cal-date" data-date="${ds}"`:''}
+                   title="${info?(info.open+info.closed)+' ta topshiriq':''}">
+      <span class="cal-day-num">${d}</span>
+      <div class="cal-dots">${dots}</div>
+    </div>`;
+  }
+
+  const clearRow = (S.histFilter && S.histFilter.date)
+    ? `<div class="cal-clear-row"><button class="btn btn-ghost btn-sm" data-act="cal-clear">✕ Sanani tozalash</button></div>`
+    : '';
+
+  wrap.innerHTML = `
+    <div class="cal-nav">
+      <button class="cal-nav-btn" data-act="cal-prev">‹</button>
+      <span class="cal-nav-title">${esc(monthLbl)}</span>
+      <button class="cal-nav-btn" data-act="cal-next">›</button>
+    </div>
+    <div class="cal-grid">
+      ${dayNames.map(n=>`<div class="cal-head">${n}</div>`).join('')}
+      ${cells}
+    </div>
+    <div style="display:flex;gap:12px;margin-top:10px;font-size:11px;color:var(--hint)">
+      <span><span class="cal-dot cal-dot-open" style="display:inline-block;vertical-align:middle;margin-right:3px"></span>Ochiq</span>
+      <span><span class="cal-dot cal-dot-closed" style="display:inline-block;vertical-align:middle;margin-right:3px"></span>Yopilgan</span>
+    </div>${clearRow}`;
+}
+
+function renderHistList() {
+  const wrap = document.getElementById('hist-list');
+  if (!wrap) return;
+
+  const f = S.histFilter || {status:'all', search:'', date:null};
+  let tasks = S.history || [];
+  if (f.status === 'open')   tasks = tasks.filter(t => t.status === 'open');
+  if (f.status === 'closed') tasks = tasks.filter(t => t.status !== 'open');
+  if (f.search) { const q=f.search.toLowerCase(); tasks=tasks.filter(t=>t.title.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q)); }
+  if (f.date)   tasks = tasks.filter(t => t.deadline && t.deadline.startsWith(f.date));
+
+  if (!tasks.length) { wrap.innerHTML='<p class="text-hint" style="text-align:center;padding:24px">Topshiriqlar topilmadi.</p>'; return; }
+
+  const months = {};
+  tasks.forEach(t => {
+    const d=t.created_at?new Date(t.created_at):new Date();
+    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const lbl=d.toLocaleDateString('uz-UZ',{year:'numeric',month:'long'});
+    if(!months[key]) months[key]={label:lbl,tasks:[]};
+    months[key].tasks.push(t);
+  });
+
+  const html = Object.keys(months).sort().reverse().map(key => {
+    const {label, tasks:mt} = months[key];
+    const cards = mt.map(t => {
+      const dl=deadlineInfo(t.deadline);
+      const isOpen=t.status==='open';
+      const statusBadge=isOpen?'<span class="badge badge-wait">⏳ Ochiq</span>':'<span class="badge" style="background:var(--border);color:var(--hint)">⬛ Yopilgan</span>';
+      const req2=t.required_files||0; const mc2=t.my_file_count||0;
+      const myBadge=t.submitted_by_me
+        ?'<span class="badge badge-done" style="font-size:10px">✅ Topshirdim</span>'
+        :(!S.isManager?(req2>0&&mc2>0?`<span class="badge badge-wait" style="font-size:10px">⏳ ${mc2}/${req2} fayl</span>`:'<span class="badge badge-over" style="font-size:10px">❌ Topshirmadim</span>'):'');
+      const p=pct(t.done_count,t.total_count);
+      const dlHtml=t.deadline?`<span class="${dl.cls||''}">📅 ${esc(dl.date)}</span>`:'<span class="text-hint">Muddatsiz</span>';
+      let dlBtn='';
+      if(!S.isManager&&t.my_submission&&t.my_submission.file_id)
+        dlBtn=`<button class="btn btn-ghost btn-sm" style="margin-top:6px" data-act="file" data-fid="${esc(t.my_submission.file_id)}" data-fname="${esc(t.my_submission.file_name||'fayl')}">⬇️ ${esc(t.my_submission.file_name||'Fayl')}</button>`;
+      const histCreatorBadge = t.creator_name
+        ? `<span class="badge" style="background:var(--primary-bg);color:var(--primary);font-size:10px">🔵 ${esc(t.creator_name)}</span>`
+        : '';
+      return `<div class="task-card" data-act="task" data-id="${t.id}" style="cursor:pointer">
+        <div class="tc-head"><div class="flex gap-8 flex-wrap items-center"><span class="tc-num">#${t.id}</span>${statusBadge}${myBadge}${histCreatorBadge}</div></div>
+        <div class="tc-title">${esc(t.title)}</div>
+        <div class="tc-meta flex gap-8 flex-wrap" style="margin-top:4px">${dlHtml}<span class="text-hint">👥 ${t.done_count}/${t.total_count}</span></div>
+        <div class="prog-wrap"><div class="prog-bar"><div class="prog-fill ${pgCls(p)}" style="width:${p}%"></div></div><div class="prog-text">${p}% bajarildi</div></div>
+        ${dlBtn}
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:20px"><div class="hist-group-hdr">${esc(label)}</div><div class="tasks-container" style="padding:0;gap:8px">${cards}</div></div>`;
+  }).join('');
+
+  wrap.innerHTML = html || '<p class="text-hint" style="text-align:center;padding:24px">Topshiriqlar topilmadi.</p>';
+}
+
+/* ── Topshiriqni o'chirish (rahbar) ─── */
+async function doDeleteTask(id) {
+  const t = S.tasks.find(x => x.id === id) || (S.history||[]).find(x => x.id === id);
+  const ok = await showConfirm(
+    `"${t ? t.title : '#'+id}" topshiriqni o'chirishni tasdiqlaysizmi?\n\nBarcha topshirmalar ham o'chiriladi!`
+  );
+  if (!ok) return;
+  const data = await api(`/api/tasks/${id}`, {method:'DELETE'});
+  if (!data) return;
+  if (data.error) { showAlert(data.error); return; }
+  S.tasks = S.tasks.filter(x => x.id !== id);
+  S.history = (S.history||[]).filter(x => x.id !== id);
+  toast("🗑️ Topshiriq o'chirildi");
+  gotoPage('tasks');
+}
+
+/* ── Muddat tahrirlash modali ────────────────────────────── */
+function openDeadlineModal(taskId) {
+  const t = S.tasks.find(x => x.id === taskId) || (S.history||[]).find(x => x.id === taskId) || S.activeTask;
+  const curVal = t && t.deadline ? localInputValue(new Date(t.deadline)) : '';
+  const c = document.getElementById('dl-modal');
+  if (!c) return;
+  c.innerHTML = `
+  <div class="modal-overlay" id="dl-overlay" style="display:flex">
+    <div class="modal">
+      <div class="modal-head">
+        <span class="modal-title">🗓 Muddatni tahrirlash</span>
+        <button class="modal-close" id="dl-close">✕</button>
+      </div>
+      <p style="font-size:13px;color:var(--hint);margin-bottom:14px">
+        #${taskId} — ${t ? esc(t.title) : ''}<br>
+        <span style="color:var(--warning)">Muddati o'tgan yoki yopilgan topshiriq ham qayta ochiladi.</span>
+      </p>
+      <label class="form-label">Yangi muddat</label>
+      <input class="form-input" id="dl-input" type="datetime-local" value="${curVal}" style="margin-bottom:18px">
+      <button class="btn btn-primary btn-full" id="dl-save">✅ Saqlash</button>
+    </div>
+  </div>`;
+  document.getElementById('dl-close').onclick  = closeDeadlineModal;
+  document.getElementById('dl-overlay').onclick = e => { if (e.target.id === 'dl-overlay') closeDeadlineModal(); };
+  document.getElementById('dl-save').onclick    = () => saveDeadline(taskId);
+}
+
+function closeDeadlineModal() {
+  const c = document.getElementById('dl-modal');
+  if (c) c.innerHTML = '';
+}
+
+async function saveDeadline(taskId) {
+  const inp = document.getElementById('dl-input');
+  if (!inp) return;
+  const raw = inp.value;
+  const deadline = raw ? localToIso(raw) : null;
+  const btn = document.getElementById('dl-save');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Saqlanmoqda...'; }
+  const data = await api(`/api/tasks/${taskId}/deadline`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({deadline}),
+  });
+  if (!data) { if (btn) { btn.disabled=false; btn.textContent='✅ Saqlash'; } return; }
+  if (data.error) { showAlert(data.error); if (btn) { btn.disabled=false; btn.textContent='✅ Saqlash'; } return; }
+  // Lokalda yangilash
+  const upd = t => { if (t && t.id === taskId) { t.deadline = deadline || ''; t.status = 'open'; } };
+  S.tasks.forEach(upd); (S.history||[]).forEach(upd);
+  if (S.activeTask && S.activeTask.id === taskId) { S.activeTask.deadline = deadline || ''; S.activeTask.status = 'open'; }
+  closeDeadlineModal();
+  toast(data.was_closed ? '🔓 Topshiriq qayta ochildi, muddat yangilandi' : '✅ Muddat yangilandi');
+  render();
+}
+
+/* ════════════════════════════════════════════════════════════
+   KPI tizimi
+   ════════════════════════════════════════════════════════════ */
+const Q_META = {
+  1:{name:'Q1',months:'Yanvar–Mart',   mList:[1,2,3]},
+  2:{name:'Q2',months:'Aprel–Iyun',    mList:[4,5,6]},
+  3:{name:'Q3',months:'Iyul–Sentabr',  mList:[7,8,9]},
+  4:{name:'Q4',months:'Oktabr–Dekabr', mList:[10,11,12]},
+};
+const M_NAMES_UZ = ['','Yanvar','Fevral','Mart','Aprel','May','Iyun',
+                    'Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
+
+function kpiGrade(p) {
+  if (p === null || p === undefined) return {icon:'—', label:'—', cls:'kpi-grade-none', badgeCls:'kpi-badge-none', cellCls:'kpi-cell-none'};
+  if (p >= 90) return {icon:'🥇', label:"A'lo",      cls:'kpi-grade-a', badgeCls:'kpi-badge-a', cellCls:'kpi-cell-a'};
+  if (p >= 70) return {icon:'🥈', label:'Yaxshi',    cls:'kpi-grade-b', badgeCls:'kpi-badge-b', cellCls:'kpi-cell-b'};
+  if (p >= 50) return {icon:'🥉', label:"O'rtacha",  cls:'kpi-grade-c', badgeCls:'kpi-badge-c', cellCls:'kpi-cell-c'};
+  return              {icon:'⚠️', label:'Past',       cls:'kpi-grade-d', badgeCls:'kpi-badge-d', cellCls:'kpi-cell-d'};
+}
+
+function kpiPct(done, total) {
+  return total > 0 ? Math.round(done / total * 100) : null;
+}
+
+function kpiPage() {
+  return `<div class="detail-body pad-nav" style="padding-top:14px">
+    <div class="center-box" style="padding:32px"><div class="spinner"></div></div>
+  </div>`;
+}
+
+async function loadKpi() {
+  const data = await api(`/api/kpi?year=${S.kpiYear}`);
+  if (!data || data.error) {
+    const pc = document.getElementById('page-content');
+    if (pc) pc.innerHTML = `<div class="center-box pad-nav"><p>${esc((data&&data.error)||'Xatolik')}</p></div>`;
+    return;
+  }
+  S.kpiData = data;
+  renderKpi();
+}
+
+function renderKpi() {
+  const pc = document.getElementById('page-content');
+  if (!pc) return;
+  if (S.isManager) {
+    if (S.kpiView === 'detail' && S.kpiEmpData) pc.innerHTML = kpiEmpDetailHtml(S.kpiEmpData);
+    else pc.innerHTML = kpiManagerHtml(S.kpiData || {employees:[], year:S.kpiYear, is_manager:true});
+  } else {
+    pc.innerHTML = kpiEmployeeHtml(S.kpiData || {quarters:{}, year:S.kpiYear});
+  }
+}
+
+function kpiYearNav(year) {
+  return `<div style="display:flex;align-items:center;gap:10px">
+    <button class="btn btn-ghost btn-sm" data-act="kpi-year" data-dir="-1" style="font-size:18px;padding:4px 10px">‹</button>
+    <span style="font-weight:700;font-size:15px">${year} yil</span>
+    <button class="btn btn-ghost btn-sm" data-act="kpi-year" data-dir="1" style="font-size:18px;padding:4px 10px">›</button>
+  </div>`;
+}
+
+function kpiQuarterCard(qNum, qData, showMonths) {
+  const now = new Date();
+  const curQ = Math.floor(now.getMonth() / 3) + 1;
+  const isCurrentQ = (qNum === curQ) && (S.kpiYear === now.getFullYear());
+  const p = kpiPct(qData.done, qData.total);
+  const g = kpiGrade(p);
+  const meta = Q_META[qNum];
+  const empty = !qData.total;
+
+  let monthsHtml = '';
+  if (showMonths && qData.months && !empty) {
+    monthsHtml = meta.mList.map(m => {
+      const mv = qData.months[String(m)];
+      if (!mv) return '';
+      const mp = kpiPct(mv.done, mv.total);
+      const mg = kpiGrade(mp);
+      return `<div class="kpi-month-row">
+        <span class="kpi-month-name">${M_NAMES_UZ[m]}</span>
+        <div class="kpi-month-bar">
+          <div class="prog-bar" style="flex:1">
+            <div class="prog-fill ${pgCls(mp||0)}" style="width:${mp||0}%"></div>
+          </div>
+          <span class="kpi-month-pct ${mg.cls}">${mp!==null?mp+'%':'—'}</span>
+        </div>
+        <span class="kpi-month-cnt">${mv.done}/${mv.total}${mv.partial ? `·⏳${mv.partial}` : ''}</span>
+      </div>`;
+    }).join('');
+  }
+
+  return `<div class="sec-card kpi-q-card ${isCurrentQ?'kpi-q-current':''} ${empty?'kpi-q-empty':''}">
+    <div class="kpi-q-head">
+      <div>
+        <span class="kpi-q-num">${meta.name}</span>
+        <span class="kpi-q-mlbl">${meta.months}</span>
+        ${isCurrentQ?'<span class="badge badge-wait" style="font-size:10px;margin-left:4px">Joriy</span>':''}
+      </div>
+      <span class="kpi-q-score ${g.cls}">${p!==null?p+'%':'—'}</span>
+    </div>
+    ${empty ? '<div class="text-hint text-sm" style="margin-top:6px">Bu chorakda topshiriq yo\'q</div>' : `
+      <div class="prog-wrap" style="margin-top:8px">
+        <div class="prog-bar"><div class="prog-fill ${pgCls(p||0)}" style="width:${p||0}%"></div></div>
+        <div class="prog-text">✅ ${qData.done} ta to'liq bajarildi / ${qData.total} ta${qData.partial ? ` · ⏳ ${qData.partial} ta chala` : ''}</div>
+      </div>${monthsHtml}`}
+  </div>`;
+}
+
+function kpiEmployeeHtml(data) {
+  const year = data.year || S.kpiYear;
+  const qs = data.quarters || {};
+  let totalDone = 0, totalAll = 0;
+  for (let q = 1; q <= 4; q++) {
+    const qd = qs[String(q)] || {done:0, total:0, months:{}};
+    totalDone += qd.done; totalAll += qd.total;
+  }
+  const avgP = kpiPct(totalDone, totalAll);
+  const g = kpiGrade(avgP);
+
+  const cards = [1,2,3,4].map(q => {
+    const qd = qs[String(q)] || {done:0, total:0, months:{}};
+    return kpiQuarterCard(q, qd, true);
+  }).join('');
+
+  return `<div class="detail-body pad-nav" style="display:flex;flex-direction:column;gap:10px;padding-top:14px">
+    <div class="sec-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:16px;font-weight:700">📊 Mening KPI Natijalarim</div>
+          <div class="text-hint text-sm">Topshiriqlar bajarilish foizi</div>
+        </div>
+        ${kpiYearNav(year)}
+      </div>
+      <div style="text-align:center;padding:12px 0 4px">
+        <div class="kpi-score-num ${g.cls}">${avgP!==null?avgP+'%':'—'}</div>
+        <span class="kpi-badge ${g.badgeCls}">${g.icon} ${esc(g.label)} — Yillik o'rtacha</span>
+      </div>
+    </div>
+    ${cards}
+    <div class="sec-card">
+      <div class="kpi-legend">
+        <span>🥇 A'lo (≥90%)</span>
+        <span>🥈 Yaxshi (≥70%)</span>
+        <span>🥉 O'rtacha (≥50%)</span>
+        <span>⚠️ Past (&lt;50%)</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function _kpiFilteredRows(emps, search) {
+  const filtered = search
+    ? emps.filter(e => e.name.toLowerCase().includes(search.toLowerCase()))
+    : emps;
+  return filtered.map((e, i) => {
+    const qs = e.quarters || {};
+    let td = 0, tt = 0;
+    const cells = [1,2,3,4].map(q => {
+      const qd = qs[String(q)] || {done:0, total:0};
+      td += qd.done; tt += qd.total;
+      const p = kpiPct(qd.done, qd.total);
+      const g = kpiGrade(p);
+      return `<td class="${g.cellCls}" style="text-align:center">${p!==null?p+'%':'—'}</td>`;
+    }).join('');
+    const avgP = kpiPct(td, tt);
+    const ag = kpiGrade(avgP);
+    return `<tr class="kpi-emp-row" data-act="kpi-emp" data-id="${e.id}" data-name="${esc(e.name)}">
+      <td style="color:var(--hint);font-size:12px">${i+1}</td>
+      <td style="font-weight:600">${esc(e.name)}</td>
+      ${cells}
+      <td style="text-align:center;font-weight:800;font-size:16px" class="${ag.cls}">${avgP!==null?avgP+'%':'—'}</td>
+      <td style="text-align:center">${ag.icon}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderKpiTable() {
+  const tbody = document.getElementById('kpi-tbody');
+  if (!tbody || !S.kpiData) return;
+  const emps = (S.kpiData.employees || []);
+  const search = (document.getElementById('kpi-search')?.value || '');
+  const rows = _kpiFilteredRows(emps, search);
+  tbody.innerHTML = rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--hint)">Xodimlar topilmadi</td></tr>';
+}
+
+function kpiManagerHtml(data) {
+  const year = data.year || S.kpiYear;
+  const emps = data.employees || [];
+  const rows = _kpiFilteredRows(emps, '');
+
+  return `<div class="detail-body pad-nav" style="display:flex;flex-direction:column;gap:10px;padding-top:14px">
+    <div class="sec-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:16px;font-weight:700">📊 Hodimlar KPI</div>
+          <div class="text-hint text-sm">${emps.length} ta xodim</div>
+        </div>
+        ${kpiYearNav(year)}
+      </div>
+      <input type="text" id="kpi-search" class="hist-search" placeholder="🔍 Xodim qidirish..."
+             style="margin-top:10px" value="">
+    </div>
+    <div class="sec-card">
+      <div class="table-wrap">
+        <table class="emp-table" style="white-space:nowrap">
+          <thead>
+            <tr>
+              <th>#</th><th style="min-width:80px">Xodim</th>
+              <th style="text-align:center">Q1</th>
+              <th style="text-align:center">Q2</th>
+              <th style="text-align:center">Q3</th>
+              <th style="text-align:center">Q4</th>
+              <th style="text-align:center">O'rtacha</th>
+              <th style="text-align:center">Daraja</th>
+            </tr>
+          </thead>
+          <tbody id="kpi-tbody">${rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--hint)">Xodimlar topilmadi</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="sec-card">
+      <div class="kpi-legend">
+        <span>🥇 A'lo (≥90%)</span>
+        <span>🥈 Yaxshi (≥70%)</span>
+        <span>🥉 O'rtacha (≥50%)</span>
+        <span>⚠️ Past (&lt;50%)</span>
+        <span class="text-hint">• Satrga bosib tafsilotni ko'ring</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function kpiEmpDetailHtml(data) {
+  const year = data.year || S.kpiYear;
+  const emp  = data.employee || {};
+  const qs   = data.quarters || {};
+  let td = 0, tt = 0;
+  for (let q = 1; q <= 4; q++) {
+    const qd = qs[String(q)] || {done:0, total:0};
+    td += qd.done; tt += qd.total;
+  }
+  const avgP = kpiPct(td, tt);
+  const g    = kpiGrade(avgP);
+
+  const cards = [1,2,3,4].map(q => {
+    const qd = qs[String(q)] || {done:0, total:0, months:{}};
+    return kpiQuarterCard(q, qd, true);
+  }).join('');
+
+  return `<div class="detail-body pad-nav" style="display:flex;flex-direction:column;gap:10px;padding-top:14px">
+    <button class="btn btn-ghost btn-sm" data-act="kpi-back" style="align-self:flex-start">← Orqaga</button>
+    <div class="sec-card">
+      <div style="font-size:16px;font-weight:700">📊 ${esc(emp.name || 'Xodim')}</div>
+      <div class="text-hint text-sm">${year} yil KPI tafsiloti</div>
+      <div style="text-align:center;padding:12px 0 4px">
+        <div class="kpi-score-num ${g.cls}">${avgP!==null?avgP+'%':'—'}</div>
+        <span class="kpi-badge ${g.badgeCls}">${g.icon} ${esc(g.label)} — Yillik o'rtacha</span>
+      </div>
+    </div>
+    ${cards}
+  </div>`;
+}
+
+async function openKpiEmployee(empId, empName) {
+  S.kpiEmpId = empId;
+  const pc = document.getElementById('page-content');
+  if (pc) pc.innerHTML = `<div class="detail-body pad-nav" style="padding-top:14px">
+    <button class="btn btn-ghost btn-sm" data-act="kpi-back" style="margin-bottom:10px">← Orqaga</button>
+    <div class="center-box" style="padding:32px"><div class="spinner"></div></div>
+  </div>`;
+
+  const data = await api(`/api/kpi/${empId}?year=${S.kpiYear}`);
+  if (!data || data.error) { showAlert((data&&data.error)||'Xatolik'); return; }
+  S.kpiEmpData = data;
+  S.kpiView = 'detail';
+  renderKpi();
+}
+
+/* ════════════════════════════════════════════════════════════
+   Sozlamalar sahifasi
+   ════════════════════════════════════════════════════════════ */
+
+const SETTINGS_META = [
+  { key: 'org_name',    label: "Tashkilot nomi",        placeholder: "Yoshlar Ishlari Agentligi" },
+  { key: 'app_title',   label: "Ilova sarlavhasi",       placeholder: "Topshiriq Tizimi" },
+  { key: 'dept_name',   label: "Bo'lim / Yo'nalish",     placeholder: "Asosiy bo'lim" },
+  { key: 'task_label',  label: "Topshiriq so'zi",        placeholder: "Topshiriq" },
+  { key: 'emp_label',   label: "Xodim so'zi",            placeholder: "Xodim" },
+  { key: 'welcome_msg', label: "Xush kelibsiz matni",    placeholder: "Tizimga xush kelibsiz." },
+];
+
+function settingsPage() {
+  return `<div class="detail-body pad-nav" style="padding-top:14px;display:flex;flex-direction:column;gap:10px">
+    <div class="center-box" style="padding:32px"><div class="spinner"></div></div>
+  </div>`;
+}
+
+async function loadSettingsPage() {
+  const data = await api('/api/settings');
+  if (!data) return;
+  const pc = document.getElementById('page-content');
+  if (!pc) return;
+
+  const fields = SETTINGS_META.map(m => `
+    <div style="margin-bottom:14px">
+      <label style="font-size:13px;font-weight:600;color:var(--hint);display:block;margin-bottom:4px">${esc(m.label)}</label>
+      <input type="text" id="set-${m.key}" class="hist-search" style="width:100%;box-sizing:border-box"
+             value="${esc(data[m.key] || '')}" placeholder="${esc(m.placeholder)}">
+    </div>`).join('');
+
+  pc.innerHTML = `<div class="detail-body pad-nav" style="padding-top:14px;display:flex;flex-direction:column;gap:10px">
+    <div class="sec-card">
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">⚙️ Tizim Sozlamalari</div>
+      <div class="text-hint text-sm">Sayt matnlarini tashkilotingizga moslang</div>
+    </div>
+    <div class="sec-card">
+      <div style="font-size:14px;font-weight:700;margin-bottom:12px">🏢 Tashkilot ma'lumotlari</div>
+      ${fields}
+      <button class="btn btn-primary" style="width:100%;margin-top:4px" data-act="settings-save">
+        💾 Saqlash
+      </button>
+      <div id="settings-msg" style="margin-top:8px;text-align:center;font-size:13px;color:var(--success);display:none"></div>
+    </div>
+    <div class="sec-card">
+      <div class="text-hint text-sm" style="line-height:1.6">
+        💡 Bu sozlamalar saytda ko'rinadigan matnlarni o'zgartiradi.<br>
+        Masalan: "Yoshlar Ishlari Agentligi" o'rniga o'z tashkilot nomingizni yozing.
+      </div>
+    </div>
+  </div>`;
+}
+
+async function doSaveSettings() {
+  const body = {};
+  SETTINGS_META.forEach(m => {
+    const el = document.getElementById('set-' + m.key);
+    if (el) body[m.key] = el.value.trim();
+  });
+  const data = await api('/api/settings', {method:'POST', body});
+  if (!data) return;
+  if (data.error) { showAlert(data.error); return; }
+  SETTINGS = {...SETTINGS, ...data};
+  // Sidebar va boshqa joylardagi nomlarni ham yangilash
+  const sbn = document.querySelector('.sb-logo-name');
+  if (sbn) sbn.textContent = SETTINGS.org_name;
+  const sbs = document.querySelector('.sb-logo-sub');
+  if (sbs) sbs.textContent = SETTINGS.app_title;
+
+  const msg = document.getElementById('settings-msg');
+  if (msg) { msg.textContent = '✅ Sozlamalar saqlandi!'; msg.style.display = 'block';
+             setTimeout(() => { msg.style.display = 'none'; }, 3000); }
+  toast('⚙️ Sozlamalar saqlandi');
+}
+
+/* ════════════════════════════════════════════════════════════
+   Hodisalar — bitta delegatsiyalangan tinglovchi.
+   Inline onclick ishlatilmaydi: apostrofli ismlar ("O'ktam")
+   handlerni buzardi va XSS yo'lini ochardi.
+   ════════════════════════════════════════════════════════════ */
+document.addEventListener('click', ev => {
+  const el = ev.target.closest('[data-act]');
+  if (!el) return;
+  const d = el.dataset;
+
+  switch (d.act) {
+    case 'page':        gotoPage(d.page); break;
+    case 'task':        openTask(parseInt(d.id, 10)); break;
+    case 'file':        dlFile(d.fid, d.fname); break;
+    case 'zip':         dlZip(parseInt(d.id, 10)); break;
+    case 'rmfile':      removeFile(parseInt(d.i, 10)); break;
+    case 'ctfile-rm':  { S.ctFiles = (S.ctFiles||[]).filter((_,ii)=>ii!==parseInt(d.i,10)); renderCtFiles(); break; }
+    case 'submit':      doSubmit(); break;
+    case 'create-task': doCreateTask(); break;
+    case 'login':       doLogin(); break;
+    case 'logout':      doLogout(); break;
+    case 'pw-eye':      togglePw(d.target, el); break;
+    case 'emp-add':     openEmpModal(null); break;
+    case 'emp-edit':    openEmpModal(parseInt(d.id, 10)); break;
+    case 'emp-del':     delEmp(parseInt(d.id, 10)); break;
+    case 'emp-save':    saveEmp(d.id === '' ? null : parseInt(d.id, 10)); break;
+    case 'emp-close':   closeEmpModal(); break;
+    case 'modal-bg':    if (ev.target === el) closeEmpModal(); break;
+    case 'track-emp':   gotoPage('track-emp', {trackEmpId: parseInt(d.id,10), trackEmpName: d.name || '', trackDate: todayStr()}); break;
+    case 'track-back':  gotoPage('map'); break;
+    case 'track-date':  loadEmpTrack(document.getElementById('track-date-input')?.value || todayStr()); break;
+    case 'delete-task':    doDeleteTask(parseInt(d.id, 10)); break;
+    case 'edit-deadline':  openDeadlineModal(parseInt(d.id, 10)); break;
+
+    case 'hist-status':
+      if (!S.histFilter) S.histFilter = {status:'all', search:'', date:null};
+      S.histFilter.status = d.status;
+      document.querySelectorAll('.hist-st-btn').forEach(b => b.classList.toggle('active', b.dataset.status === d.status));
+      renderHistList();
+      break;
+    case 'cal-date': {
+      if (!S.histFilter) S.histFilter = {status:'all', search:'', date:null};
+      S.histFilter.date = S.histFilter.date === d.date ? null : d.date;
+      renderCalendar(); renderHistList();
+      break;
+    }
+    case 'cal-prev': {
+      let m=S.histCalMonth-1,y=S.histCalYear; if(m<0){m=11;y--;} S.histCalMonth=m;S.histCalYear=y; renderCalendar(); break;
+    }
+    case 'cal-next': {
+      let m2=S.histCalMonth+1,y2=S.histCalYear; if(m2>11){m2=0;y2++;} S.histCalMonth=m2;S.histCalYear=y2; renderCalendar(); break;
+    }
+    case 'cal-clear':
+      if (S.histFilter) S.histFilter.date = null;
+      renderCalendar(); renderHistList();
+      break;
+
+    case 'kpi-year': {
+      S.kpiYear += parseInt(d.dir, 10);
+      S.kpiData = null; S.kpiView = 'summary'; S.kpiEmpId = null; S.kpiEmpData = null;
+      const pc2 = document.getElementById('page-content');
+      if (pc2) { pc2.innerHTML = kpiPage(); loadKpi(); }
+      break;
+    }
+    case 'kpi-emp':
+      openKpiEmployee(parseInt(d.id, 10), d.name || '');
+      break;
+    case 'kpi-back':
+      S.kpiView = 'summary'; S.kpiEmpId = null; S.kpiEmpData = null;
+      renderKpi();
+      break;
+    case 'settings-save':
+      doSaveSettings();
+      break;
+    case 'dl-myfile':
+      dlMyFile(parseInt(d.tid,10), d.rtype, parseInt(d.rid,10), d.fname);
+      break;
+    case 'del-myfile':
+      deleteMyFile(parseInt(d.tid,10), d.rtype, parseInt(d.rid,10), d.fname);
+      break;
+  }
+});
+
+document.addEventListener('change', ev => {
+  if (ev.target.id === 'finput')           onFilesPicked(ev.target.files, true);   // asosiy — almashtiradi
+  if (ev.target.id === 'finput-cam')       onFilesPicked(ev.target.files, false);  // kamera — qo'shadi
+  if (ev.target.id === 'finput-gallery')   onFilesPicked(ev.target.files, false);  // galereya — qo'shadi
+  if (ev.target.id === 'finput-zip')       onFilesPicked(ev.target.files, false);  // arxiv — qo'shadi
+});
+
+document.addEventListener('input', ev => {
+  if (ev.target.id === 'narea') { S.note = ev.target.value; refreshSubmitBtn(); }
+  if (ev.target.id === 'hist-search') {
+    if (!S.histFilter) S.histFilter = {status:'all', search:'', date:null};
+    S.histFilter.search = ev.target.value;
+    renderHistList();
+  }
+  if (ev.target.id === 'kpi-search') renderKpiTable();
+});
+
+/* BackButton faqat BIR MARTA ro'yxatdan o'tadi — har render'da emas,
+   aks holda callbacklar to'planib ketadi. */
+if (tg && tg.BackButton) tg.BackButton.onClick(() => gotoPage('tasks'));
+
+/* ════════════════════════════════════════════════════════════
+   Ishga tushirish
+   ════════════════════════════════════════════════════════════ */
+(async () => {
+  render({page:'loading'});
+  await loadSettings(); // login sahifasida nom ko'rinishi uchun kutamiz
+
+  if (IS_TG) {
+    if (await loadTasks()) render({page:'tasks'});
+    else document.getElementById('root').innerHTML = `
+      <div class="center-box" style="min-height:100dvh">
+        <div class="icon">⚠️</div>
+        <p>Ma'lumotlarni yuklab bo'lmadi. Internetni tekshirib, qaytadan oching.</p>
+      </div>`;
+    return;
+  }
+
+  if (Store.getToken()) {
+    try {
+      const me = await fetch('/api/me', {headers: authHeaders()}).then(r => r.json());
+      if (me && me.user) {
+        S.user      = me.user;
+        S.isManager = !!me.is_manager;
+        startSSE();
+        if (!S.isManager) startLocationTracking();
+        if (await loadTasks()) { render({page:'tasks'}); return; }
+      }
+    } catch (_) { /* pastda login sahifasiga tushamiz */ }
+    Store.clear();
+  }
+  render({page:'login'});
+})();
+</script>
+</body>
+</html>

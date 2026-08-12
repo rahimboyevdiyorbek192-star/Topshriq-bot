@@ -99,6 +99,9 @@ def format_deadline(deadline_iso: str | None, tz: ZoneInfo) -> str:
         return deadline_iso
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=tz)
+    else:
+        # Web orqali kelgan muddat UTC bo'lishi mumkin — mahalliy vaqtga o'giramiz
+        dt = dt.astimezone(tz)
     wd = _WEEKDAYS_UZ[dt.weekday()]
     return f"{dt.strftime('%d.%m.%Y %H:%M')} ({wd})"
 

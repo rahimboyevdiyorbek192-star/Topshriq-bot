@@ -39,7 +39,7 @@ class Config:
     bot_token: str
     manager_ids: list[int]
     tasks_group_id: int | None
-    execution_group_id: int | None
+    execution_group_ids: list[int]         # Bir yoki bir nechta ijro guruhi
     tasks_channel_id: int | None          # Alohida kanal (ixtiyoriy)
     timezone_name: str
     db_path: str
@@ -60,6 +60,18 @@ class Config:
     tg_api_hash: str = ""
     tg_userbot_session: str = ""
 
+    # Mini App (Telegram Web App)
+    webapp_url: str = ""       # HTTPS URL (masalan: https://topshriq.example.com)
+    webapp_host: str = "0.0.0.0"
+    webapp_port: int = 8080
+    webapp_manager_phone: str = ""    # Rahbar web login uchun telefon
+    webapp_manager_password: str = "" # Rahbar web login uchun parol
+
+    @property
+    def execution_group_id(self) -> int | None:
+        """Birinchi ijro guruhi (orqaga mos uchun)."""
+        return self.execution_group_ids[0] if self.execution_group_ids else None
+
     @property
     def ai_enabled(self) -> bool:
         if self.use_ollama:
@@ -76,6 +88,10 @@ class Config:
     @property
     def userbot_enabled(self) -> bool:
         return bool(self.tg_api_id and self.tg_api_hash and self.tg_userbot_session)
+
+    @property
+    def webapp_enabled(self) -> bool:
+        return bool(self.webapp_url)
 
     def is_tasks_source(self, chat_id: int) -> bool:
         """Ushbu chat topshiriqlar manbai ekanligini tekshiradi."""
@@ -94,7 +110,7 @@ def load_config() -> Config:
             "(namuna: .env.example)."
         )
 
-    reminders_raw = os.getenv("REMINDER_MINUTES", "120,30")
+    reminders_raw = os.getenv("REMINDER_MINUTES", "60,30")
     reminders = sorted(
         {m for m in (_parse_int(x) for x in reminders_raw.split(",")) if m and m > 0},
         reverse=True,
@@ -104,7 +120,10 @@ def load_config() -> Config:
         bot_token=token,
         manager_ids=_parse_ids(os.getenv("MANAGER_IDS")),
         tasks_group_id=_parse_int(os.getenv("TASKS_GROUP_ID")),
-        execution_group_id=_parse_int(os.getenv("EXECUTION_GROUP_ID")),
+        execution_group_ids=(
+            _parse_ids(os.getenv("EXECUTION_GROUP_IDS"))
+            or ([v] if (v := _parse_int(os.getenv("EXECUTION_GROUP_ID"))) else [])
+        ),
         tasks_channel_id=_parse_int(os.getenv("TASKS_CHANNEL_ID")),
         timezone_name=os.getenv("TIMEZONE", "Asia/Tashkent"),
         db_path=os.getenv("DB_PATH", "topshriq.db"),
@@ -118,4 +137,9 @@ def load_config() -> Config:
         tg_api_id=_parse_int(os.getenv("TG_API_ID")),
         tg_api_hash=os.getenv("TG_API_HASH", "").strip(),
         tg_userbot_session=os.getenv("TG_USERBOT_SESSION", "").strip(),
+        webapp_url=os.getenv("WEBAPP_URL", "").strip(),
+        webapp_host=os.getenv("WEBAPP_HOST", "0.0.0.0").strip(),
+        webapp_port=int(os.getenv("WEBAPP_PORT", "8080")),
+        webapp_manager_phone=os.getenv("WEBAPP_MANAGER_PHONE", "").strip(),
+        webapp_manager_password=os.getenv("WEBAPP_MANAGER_PASSWORD", "").strip(),
     )

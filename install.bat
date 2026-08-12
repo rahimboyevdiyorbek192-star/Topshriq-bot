@@ -1,9 +1,9 @@
 @echo off
-title Robot Mutaxassis Bot - O'rnatish
+title Topshiriq Bot - O'rnatish
 
 echo.
 echo ===================================================
-echo    ROBOT MUTAXASSIS BOT - O'RNATISH
+echo    TOPSHIRIQ BOTI - O'RNATISH
 echo ===================================================
 echo.
 
@@ -38,7 +38,14 @@ echo.
 :: Kutubxonalar
 echo [3/4] Kutubxonalar o'rnatilmoqda...
 call venv\Scripts\activate.bat
-pip install -r requirements.txt --quiet
+venv\Scripts\python.exe -m pip install --upgrade pip --quiet
+venv\Scripts\python.exe -m pip install -r requirements.txt
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo [XATO] O'rnatishda muammo chiqdi. Yuqoridagi xatoni rasmga olib yuboring.
+    pause
+    exit /b 1
+)
 echo     Barcha kutubxonalar o'rnatildi.
 echo.
 

@@ -38,8 +38,8 @@ async def cmd_svodka(
         if not task:
             await message.reply("⚠️ Bunday topshiriq topilmadi.")
             return
-        submitted = await db.submitted_employee_ids(task_id)
-        text = build_task_text_report(task, employees, submitted, config.tz)
+        fully_done, partial = await db.get_task_done_partial_ids(task_id)
+        text = build_task_text_report(task, employees, fully_done, config.tz, partial_ids=partial)
         await message.reply(text)
         return
 
@@ -48,9 +48,9 @@ async def cmd_svodka(
     rows  = []
     submitted_map: dict[int, set[int]] = {}
     for t in tasks:
-        sub_ids = await db.submitted_employee_ids(t["id"])
-        submitted_map[t["id"]] = sub_ids
-        rows.append((t, sub_ids))
+        fully_done, partial = await db.get_task_done_partial_ids(t["id"])
+        submitted_map[t["id"]] = fully_done | partial
+        rows.append((t, fully_done, partial))
 
     # Rasm
     if tasks and PIL_AVAILABLE:

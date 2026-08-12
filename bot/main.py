@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 
+from aiohttp import web as aiohttp_web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -12,8 +14,9 @@ from aiogram.types import BotCommand
 from .config import load_config
 from .database import Database
 from .handlers import setup_routers
-from .middlewares import AlbumMiddleware, DependencyMiddleware
+from .middlewares import AccessControlMiddleware, AlbumMiddleware, DependencyMiddleware
 from .scheduler import setup_scheduler
+from .ai import create_ai_client
 from .userbot import create_userbot
 
 logging.basicConfig(
@@ -46,20 +49,8 @@ async def main() -> None:
     await db.connect()
     logger.info("Ma'lumotlar bazasi ulandi: %s", config.db_path)
 
-    # AI klienti (Ollama yoki Claude)
-    ai_client = None
-    if config.use_ollama:
-        from .ai_ollama import OllamaClient
-        vision = config.ollama_vision_model or config.ollama_model
-        ai_client = OllamaClient(config.ollama_base_url, config.ollama_model, vision_model=vision)
-        logger.info("Mahalliy AI (Ollama) yoqildi: %s / %s (vision: %s)",
-                    config.ollama_base_url, config.ollama_model, vision)
-    elif config.anthropic_api_key:
-        from .ai import AIClient
-        ai_client = AIClient(config.anthropic_api_key, config.anthropic_model)
-        logger.info("Claude AI yoqildi (model: %s)", config.anthropic_model)
-    else:
-        logger.info("AI o'chirilgan (API kalit yo'q).")
+    # AI klienti — provayder .env bo'yicha avtomatik tanlanadi
+    ai_client = create_ai_client(config)
 
     # Userbot (Telethon)
     userbot = create_userbot(
@@ -78,15 +69,48 @@ async def main() -> None:
     )
     dp = Dispatcher()
 
-    deps  = DependencyMiddleware(config, db, ai=ai_client)
-    album = AlbumMiddleware()
+    access = AccessControlMiddleware(config, db)
+    deps   = DependencyMiddleware(config, db, ai=ai_client)
+    album  = AlbumMiddleware()
+
+    # Kirish nazorati — barcha xabarlardan OLDIN tekshiriladi
+    dp.message.outer_middleware(access)
+    dp.callback_query.outer_middleware(access)
+    dp.edited_message.outer_middleware(access)
+
     dp.message.outer_middleware(deps)
     dp.message.outer_middleware(album)
     dp.callback_query.outer_middleware(deps)
     dp.channel_post.outer_middleware(deps)
     dp.channel_post.outer_middleware(album)
+    dp.edited_message.outer_middleware(deps)
 
     dp.include_router(setup_routers())
+
+    # Mini App web server
+    webapp_runner = None
+    if config.webapp_enabled:
+        from .webapp import create_webapp
+        webapp     = create_webapp(config, db, bot)
+        webapp_runner = aiohttp_web.AppRunner(webapp)
+        await webapp_runner.setup()
+        site = aiohttp_web.TCPSite(webapp_runner, config.webapp_host, config.webapp_port)
+        try:
+            await site.start()
+        except OSError as exc:
+            if exc.errno in (98, 10048):  # Linux EADDRINUSE / Windows
+                logger.error(
+                    "❌ Port %s band! Avvalgi bot hali ishlayapti.\n"
+                    "  Windows: Task Manager oching → python.exe ni topib 'End Task' bosing\n"
+                    "  Yoki .env faylida WEBAPP_PORT=8081 yozing va qayta ishga tushiring.",
+                    config.webapp_port,
+                )
+                sys.exit(1)
+            raise
+        logger.info("Mini App server ishga tushdi: http://%s:%s  (WEBAPP_URL=%s)",
+                    config.webapp_host, config.webapp_port, config.webapp_url)
+    else:
+        logger.info("Mini App o'chirilgan (WEBAPP_URL sozlanmagan).")
 
     scheduler = setup_scheduler(bot, db, config, userbot=userbot)
     scheduler.start()
@@ -103,14 +127,16 @@ async def main() -> None:
     try:
         await dp.start_polling(
             bot,
-            allowed_updates=["message", "callback_query", "channel_post"],
+            allowed_updates=["message", "edited_message", "callback_query", "channel_post"],
         )
     finally:
         scheduler.shutdown(wait=False)
+        if webapp_runner:
+            await webapp_runner.cleanup()
         if config.userbot_enabled:
             await userbot.stop()
         await db.close()
-        if ai_client and hasattr(ai_client, "close"):
+        if ai_client:
             await ai_client.close()
         await bot.session.close()
 
